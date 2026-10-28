@@ -101,9 +101,14 @@ import { authUsers } from "drizzle-orm/supabase";
 // ── helpers ─────────────────────────────────────────────────────────────
 const tstz = (name: string) => timestamp(name, { withTimezone: true, mode: "date" });
 const createdAt = tstz("created_at").defaultNow().notNull();
-const updatedAt = tstz("updated_at").defaultNow().notNull().$onUpdate(() => new Date());
+const updatedAt = tstz("updated_at")
+  .defaultNow()
+  .notNull()
+  .$onUpdate(() => new Date());
 const businessId = () =>
-  uuid("business_id").notNull().references(() => businesses.id, { onDelete: "cascade" });
+  uuid("business_id")
+    .notNull()
+    .references(() => businesses.id, { onDelete: "cascade" });
 
 // ── enums ───────────────────────────────────────────────────────────────
 export const planEnum = pgEnum("plan", ["free", "pro"]);
@@ -111,20 +116,35 @@ export const memberRoleEnum = pgEnum("member_role", ["owner", "staff"]);
 // Only the staff colours defined in docs/design/globals.css.
 export const staffColorEnum = pgEnum("staff_color", ["teal", "violet", "pink"]);
 export const bookingStatusEnum = pgEnum("booking_status", [
-  "pending", "confirmed", "cancelled", "completed", "no_show",
+  "pending",
+  "confirmed",
+  "cancelled",
+  "completed",
+  "no_show",
 ]);
 export const bookingSourceEnum = pgEnum("booking_source", ["page", "widget", "ai", "manual"]);
 export const actorEnum = pgEnum("actor", ["customer", "staff", "ai", "system"]);
 export const bookingEventTypeEnum = pgEnum("booking_event_type", [
-  "created", "rescheduled", "cancelled", "completed", "no_show", "reminder_sent",
+  "created",
+  "rescheduled",
+  "cancelled",
+  "completed",
+  "no_show",
+  "reminder_sent",
 ]);
 export const chatChannelEnum = pgEnum("chat_channel", ["page", "widget"]);
 export const chatOutcomeEnum = pgEnum("chat_outcome", ["open", "answered", "booked", "handed_off"]);
 export const aiMessageRoleEnum = pgEnum("ai_message_role", ["user", "assistant", "system"]);
 export const handoffStatusEnum = pgEnum("handoff_status", ["open", "replied", "closed"]);
 export const subscriptionStatusEnum = pgEnum("subscription_status", [
-  "incomplete", "incomplete_expired", "trialing", "active",
-  "past_due", "canceled", "unpaid", "paused",
+  "incomplete",
+  "incomplete_expired",
+  "trialing",
+  "active",
+  "past_due",
+  "canceled",
+  "unpaid",
+  "paused",
 ]);
 
 // UI preferences only. Anything the slot engine or billing depends on is a real column.
@@ -180,7 +200,9 @@ export const businesses = pgTable(
 // ── people ──────────────────────────────────────────────────────────────
 // One row per auth user (created by trigger on auth.users). Powers "Edited by Mia".
 export const profiles = pgTable("profiles", {
-  id: uuid("id").primaryKey().references(() => authUsers.id, { onDelete: "cascade" }),
+  id: uuid("id")
+    .primaryKey()
+    .references(() => authUsers.id, { onDelete: "cascade" }),
   fullName: text("full_name"),
   avatarUrl: text("avatar_url"),
   createdAt,
@@ -191,7 +213,9 @@ export const memberships = pgTable(
   "memberships",
   {
     businessId: businessId(),
-    userId: uuid("user_id").notNull().references(() => authUsers.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => authUsers.id, { onDelete: "cascade" }),
     role: memberRoleEnum("role").notNull(),
     createdAt,
   },
@@ -234,8 +258,10 @@ export const staffInvites = pgTable(
     createdAt,
   },
   (t) => [
-    foreignKey({ columns: [t.staffId, t.businessId], foreignColumns: [staff.id, staff.businessId] })
-      .onDelete("cascade"),
+    foreignKey({
+      columns: [t.staffId, t.businessId],
+      foreignColumns: [staff.id, staff.businessId],
+    }).onDelete("cascade"),
   ],
 );
 
@@ -275,10 +301,14 @@ export const staffServices = pgTable(
   (t) => [
     primaryKey({ columns: [t.staffId, t.serviceId] }),
     index().on(t.serviceId),
-    foreignKey({ columns: [t.staffId, t.businessId], foreignColumns: [staff.id, staff.businessId] })
-      .onDelete("cascade"),
-    foreignKey({ columns: [t.serviceId, t.businessId], foreignColumns: [services.id, services.businessId] })
-      .onDelete("cascade"),
+    foreignKey({
+      columns: [t.staffId, t.businessId],
+      foreignColumns: [staff.id, staff.businessId],
+    }).onDelete("cascade"),
+    foreignKey({
+      columns: [t.serviceId, t.businessId],
+      foreignColumns: [services.id, services.businessId],
+    }).onDelete("cascade"),
   ],
 );
 
@@ -297,8 +327,10 @@ export const availabilityRules = pgTable(
     index().on(t.staffId, t.weekday),
     check("availability_weekday", sql`${t.weekday} between 0 and 6`),
     check("availability_range", sql`${t.startTime} < ${t.endTime}`),
-    foreignKey({ columns: [t.staffId, t.businessId], foreignColumns: [staff.id, staff.businessId] })
-      .onDelete("cascade"),
+    foreignKey({
+      columns: [t.staffId, t.businessId],
+      foreignColumns: [staff.id, staff.businessId],
+    }).onDelete("cascade"),
   ],
 );
 
@@ -317,8 +349,10 @@ export const timeOff = pgTable(
   (t) => [
     index().on(t.staffId, t.startsAt),
     check("time_off_range", sql`${t.endsAt} > ${t.startsAt}`),
-    foreignKey({ columns: [t.staffId, t.businessId], foreignColumns: [staff.id, staff.businessId] })
-      .onDelete("cascade"),
+    foreignKey({
+      columns: [t.staffId, t.businessId],
+      foreignColumns: [staff.id, staff.businessId],
+    }).onDelete("cascade"),
   ],
 );
 
@@ -334,7 +368,9 @@ export const customers = pgTable(
     timezone: text("timezone"), // last seen, for emails
     notes: text("notes"), // private: never sent to the customer or the AI
     notesUpdatedAt: tstz("notes_updated_at"),
-    notesUpdatedBy: uuid("notes_updated_by").references(() => authUsers.id, { onDelete: "set null" }),
+    notesUpdatedBy: uuid("notes_updated_by").references(() => authUsers.id, {
+      onDelete: "set null",
+    }),
     createdAt,
     updatedAt,
   },
@@ -363,7 +399,9 @@ export const bookings = pgTable(
     customerNotes: text("customer_notes"),
     customerTimezone: text("customer_timezone"),
     manageTokenHash: text("manage_token_hash").notNull().unique(),
-    createdByUserId: uuid("created_by_user_id").references(() => authUsers.id, { onDelete: "set null" }),
+    createdByUserId: uuid("created_by_user_id").references(() => authUsers.id, {
+      onDelete: "set null",
+    }),
     aiConversationId: uuid("ai_conversation_id").references((): AnyPgColumn => aiConversations.id, {
       onDelete: "set null",
     }),
@@ -383,9 +421,18 @@ export const bookings = pgTable(
       "bookings_buffers",
       sql`${t.bufferedStart} <= ${t.startsAt} and ${t.bufferedEnd} >= ${t.endsAt}`,
     ),
-    foreignKey({ columns: [t.serviceId, t.businessId], foreignColumns: [services.id, services.businessId] }),
-    foreignKey({ columns: [t.staffId, t.businessId], foreignColumns: [staff.id, staff.businessId] }),
-    foreignKey({ columns: [t.customerId, t.businessId], foreignColumns: [customers.id, customers.businessId] }),
+    foreignKey({
+      columns: [t.serviceId, t.businessId],
+      foreignColumns: [services.id, services.businessId],
+    }),
+    foreignKey({
+      columns: [t.staffId, t.businessId],
+      foreignColumns: [staff.id, staff.businessId],
+    }),
+    foreignKey({
+      columns: [t.customerId, t.businessId],
+      foreignColumns: [customers.id, customers.businessId],
+    }),
     // no_double_booking EXCLUDE constraint lives in a custom SQL migration (drizzle can't express it)
   ],
 );
@@ -396,7 +443,9 @@ export const bookingEvents = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     businessId: businessId(),
-    bookingId: uuid("booking_id").notNull().references(() => bookings.id, { onDelete: "cascade" }),
+    bookingId: uuid("booking_id")
+      .notNull()
+      .references(() => bookings.id, { onDelete: "cascade" }),
     type: bookingEventTypeEnum("type").notNull(),
     actor: actorEnum("actor").notNull(),
     actorUserId: uuid("actor_user_id").references(() => authUsers.id, { onDelete: "set null" }),
@@ -461,7 +510,9 @@ export const handoffRequests = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     businessId: businessId(),
-    conversationId: uuid("conversation_id").references(() => aiConversations.id, { onDelete: "set null" }),
+    conversationId: uuid("conversation_id").references(() => aiConversations.id, {
+      onDelete: "set null",
+    }),
     customerId: uuid("customer_id").references(() => customers.id, { onDelete: "set null" }),
     name: text("name").notNull(),
     email: text("email").notNull(),
@@ -536,7 +587,7 @@ New staff get `teal`, `violet`, `pink` in order (`staff index mod 3`), so colour
 
 ### adminDb guardrails
 
-- Every query function that uses `adminDb` takes `businessId: string` as a required argument, enforced by its type signature. No `adminDb` query function exists without one. (The only exceptions are the lookups that *resolve* a tenant: by slug, by manage-token hash, and Stripe customer ID. Each returns only the ID plus public fields.)
+- Every query function that uses `adminDb` takes `businessId: string` as a required argument, enforced by its type signature. No `adminDb` query function exists without one. (The only exceptions are the lookups that _resolve_ a tenant: by slug, by manage-token hash, and Stripe customer ID. Each returns only the ID plus public fields.)
 - Public query functions (booking page, embed, AI chat) select explicit public columns. They never return customer emails, phone numbers, private notes, token hashes, Stripe IDs or settings that aren't meant for customers. Their return types are named `Public…` types.
 - Test: `tests/integration/public-data.test.ts` loads the public booking page data for the seeded business and fails if any private field name or seeded private value (customer emails, notes, `manage_token_hash`, `stripe_customer_id`) appears anywhere in the serialized result.
 

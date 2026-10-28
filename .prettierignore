@@ -1,0 +1,13 @@
+pnpm-lock.yaml
+.next
+node_modules
+coverage
+playwright-report
+test-results
+supabase/migrations
+docs/design
+public/embed.js
+next-env.d.ts
+docs/brief.md
+src/app/globals.css
+src/components/ui
