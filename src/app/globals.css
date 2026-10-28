@@ -1,26 +1,312 @@
+/*
+ * Slotwren design system: globals.css for shadcn/ui (Tailwind CSS v4)
+ * Generated from Slotwren tokens.json (light = :root, dark = .dark).
+ * Fonts: works with next/font (--font-geist-sans / --font-geist-mono, the
+ * create-next-app defaults) or with Geist loaded from Google Fonts.
+ *
+ * Copied from docs/design/globals.css (the source of truth). The only
+ * addition is the shadcn/tailwind.css import: variants and keyframes the
+ * shadcn components need, no colours.
+ */
 @import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+    --radius: 0.625rem;
+    /* 10px */
+
+    /* shadcn/ui core */
+    --background: #FAFAF9;
+    --foreground: #1C1917;
+    --card: #FFFFFF;
+    --card-foreground: var(--foreground);
+    --popover: #FFFFFF;
+    --popover-foreground: var(--foreground);
+    --primary: #0F766E;
+    --primary-foreground: #FFFFFF;
+    --secondary: #F5F5F4;
+    --secondary-foreground: #1C1917;
+    --muted: #F5F5F4;
+    --muted-foreground: #78716C;
+    --accent: #F5F5F4;
+    --accent-foreground: #1C1917;
+    --destructive: #DC2626;
+    --border: #E7E5E4;
+    --input: #8E8781;
+    --ring: #0F766E;
+
+    /* Slotwren: action states and soft fills */
+    --primary-hover: #115E59;
+    --primary-tint: #CCFBF1;
+    --primary-tint-foreground: #115E59;
+    --destructive-foreground: #FFFFFF;
+    --destructive-hover: #B91C1C;
+
+    /* Slotwren: amber highlight (fills; use highlight-text for text) */
+    --highlight: #F59E0B;
+    --highlight-foreground: #1C1917;
+    --highlight-text: #B45309;
+
+    /* Slotwren: status (solid marks; -text for text; -soft for tinted grounds) */
+    --success: #16A34A;
+    --success-text: #15803D;
+    --success-soft: #F0FDF4;
+    --warning: #D97706;
+    --warning-text: #B45309;
+    --warning-soft: #FFFBEB;
+    --danger: #DC2626;
+    --danger-text: #B91C1C;
+    --danger-soft: #FEF2F2;
+    --info: #2563EB;
+    --info-text: #1D4ED8;
+    --info-soft: #EFF6FF;
+
+    /* Slotwren: staff identity (Mia teal, Jonah violet, Aiko pink) */
+    --staff-teal: #0D9488;
+    --staff-teal-soft: #CCFBF1;
+    --staff-teal-text: #115E59;
+    --staff-violet: #7C3AED;
+    --staff-violet-soft: #EDE9FE;
+    --staff-violet-text: #5B21B6;
+    --staff-pink: #DB2777;
+    --staff-pink-soft: #FCE7F3;
+    --staff-pink-text: #9D174D;
+
+    /* shadcn sidebar: mapped to Slotwren surfaces */
+    --sidebar: var(--card);
+    --sidebar-foreground: var(--foreground);
+    --sidebar-primary: var(--primary);
+    --sidebar-primary-foreground: var(--primary-foreground);
+    --sidebar-accent: var(--accent);
+    --sidebar-accent-foreground: var(--accent-foreground);
+    --sidebar-border: var(--border);
+    --sidebar-ring: var(--ring);
+
+    /* Shadows */
+    --sw-shadow-xs: 0 1px 2px 0 #1c19170d;
+    --sw-shadow-sm: 0 1px 3px 0 #1c19170f, 0 1px 2px -1px #1c19170f;
+    --sw-shadow-md: 0 8px 24px -6px #1c19171f, 0 2px 6px -2px #1c191714;
+}
+
+.dark {
+    /* shadcn/ui core */
+    --background: #0C0A09;
+    --foreground: #FAFAF9;
+    --card: #1C1917;
+    --card-foreground: var(--foreground);
+    --popover: #1C1917;
+    --popover-foreground: var(--foreground);
+    --primary: #2DD4BF;
+    --primary-foreground: #042F2E;
+    --secondary: #292524;
+    --secondary-foreground: #FAFAF9;
+    --muted: #292524;
+    --muted-foreground: #A8A29E;
+    --accent: #292524;
+    --accent-foreground: #FAFAF9;
+    --destructive: #DC2626;
+    --border: #292524;
+    --input: #78716C;
+    --ring: #2DD4BF;
+
+    /* Slotwren: action states and soft fills */
+    --primary-hover: #5EEAD4;
+    --primary-tint: #134E4A;
+    --primary-tint-foreground: #99F6E4;
+    --destructive-foreground: #FFFFFF;
+    --destructive-hover: #B91C1C;
+
+    /* Slotwren: amber highlight (fills; use highlight-text for text) */
+    --highlight: #F59E0B;
+    --highlight-foreground: #1C1917;
+    --highlight-text: #FBBF24;
+
+    /* Slotwren: status (solid marks; -text for text; -soft for tinted grounds) */
+    --success: #16A34A;
+    --success-text: #4ADE80;
+    --success-soft: #052E16;
+    --warning: #D97706;
+    --warning-text: #FBBF24;
+    --warning-soft: #451A03;
+    --danger: #DC2626;
+    --danger-text: #F87171;
+    --danger-soft: #450A0A;
+    --info: #2563EB;
+    --info-text: #60A5FA;
+    --info-soft: #172554;
+
+    /* Slotwren: staff identity (Mia teal, Jonah violet, Aiko pink) */
+    --staff-teal: #0D9488;
+    --staff-teal-soft: #134E4A;
+    --staff-teal-text: #99F6E4;
+    --staff-violet: #8B5CF6;
+    --staff-violet-soft: #2E1065;
+    --staff-violet-text: #DDD6FE;
+    --staff-pink: #EC4899;
+    --staff-pink-soft: #500724;
+    --staff-pink-text: #FBCFE8;
+
+    /* shadcn sidebar: mapped to Slotwren surfaces */
+    --sidebar: var(--card);
+    --sidebar-foreground: var(--foreground);
+    --sidebar-primary: var(--primary);
+    --sidebar-primary-foreground: var(--primary-foreground);
+    --sidebar-accent: var(--accent);
+    --sidebar-accent-foreground: var(--accent-foreground);
+    --sidebar-border: var(--border);
+    --sidebar-ring: var(--ring);
+
+    /* Shadows */
+    --sw-shadow-xs: 0 1px 2px 0 #00000066;
+    --sw-shadow-sm: 0 1px 3px 0 #00000080;
+    --sw-shadow-md: 0 8px 24px -6px #000000b3, 0 0 0 1px #292524;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+    /* Fonts */
+    --font-sans: var(--font-geist-sans, "Geist"), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    --font-mono: var(--font-geist-mono, "Geist Mono"), ui-monospace, "SF Mono", Menlo, monospace;
+
+    /* Radius: sm 6 · md 8 · lg 10 · xl 14 */
+    --radius-sm: calc(var(--radius) - 4px);
+    --radius-md: calc(var(--radius) - 2px);
+    --radius-lg: var(--radius);
+    --radius-xl: calc(var(--radius) + 4px);
+
+    /* Shadows: shadow-xs, shadow-sm, shadow-md follow the theme */
+    --shadow-xs: var(--sw-shadow-xs);
+    --shadow-sm: var(--sw-shadow-sm);
+    --shadow-md: var(--sw-shadow-md);
+
+    /* Colours: bg-*, text-*, border-*, ring-* … */
+    --color-background: var(--background);
+    --color-foreground: var(--foreground);
+    --color-card: var(--card);
+    --color-card-foreground: var(--card-foreground);
+    --color-popover: var(--popover);
+    --color-popover-foreground: var(--popover-foreground);
+    --color-muted: var(--muted);
+    --color-muted-foreground: var(--muted-foreground);
+    --color-secondary: var(--secondary);
+    --color-secondary-foreground: var(--secondary-foreground);
+    --color-accent: var(--accent);
+    --color-accent-foreground: var(--accent-foreground);
+    --color-primary: var(--primary);
+    --color-primary-foreground: var(--primary-foreground);
+    --color-primary-hover: var(--primary-hover);
+    --color-primary-tint: var(--primary-tint);
+    --color-primary-tint-foreground: var(--primary-tint-foreground);
+    --color-highlight: var(--highlight);
+    --color-highlight-foreground: var(--highlight-foreground);
+    --color-highlight-text: var(--highlight-text);
+    --color-border: var(--border);
+    --color-input: var(--input);
+    --color-ring: var(--ring);
+    --color-destructive: var(--destructive);
+    --color-destructive-foreground: var(--destructive-foreground);
+    --color-destructive-hover: var(--destructive-hover);
+    --color-success: var(--success);
+    --color-success-text: var(--success-text);
+    --color-success-soft: var(--success-soft);
+    --color-warning: var(--warning);
+    --color-warning-text: var(--warning-text);
+    --color-warning-soft: var(--warning-soft);
+    --color-danger: var(--danger);
+    --color-danger-text: var(--danger-text);
+    --color-danger-soft: var(--danger-soft);
+    --color-info: var(--info);
+    --color-info-text: var(--info-text);
+    --color-info-soft: var(--info-soft);
+    --color-staff-teal: var(--staff-teal);
+    --color-staff-teal-soft: var(--staff-teal-soft);
+    --color-staff-teal-text: var(--staff-teal-text);
+    --color-staff-violet: var(--staff-violet);
+    --color-staff-violet-soft: var(--staff-violet-soft);
+    --color-staff-violet-text: var(--staff-violet-text);
+    --color-staff-pink: var(--staff-pink);
+    --color-staff-pink-soft: var(--staff-pink-soft);
+    --color-staff-pink-text: var(--staff-pink-text);
+    --color-sidebar: var(--sidebar);
+    --color-sidebar-foreground: var(--sidebar-foreground);
+    --color-sidebar-primary: var(--sidebar-primary);
+    --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+    --color-sidebar-accent: var(--sidebar-accent);
+    --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+    --color-sidebar-border: var(--sidebar-border);
+    --color-sidebar-ring: var(--sidebar-ring);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+@theme {
+    /* Slotwren type scale: text-hero, text-display, text-heading, text-title,
+     text-body, text-body-sm, text-label, text-caption, text-mono-lg,
+     text-mono, text-mono-sm (pair the mono ones with font-mono tabular-nums) */
+    --text-hero: 3rem;
+    --text-hero--line-height: 3.25rem;
+    --text-hero--font-weight: 600;
+    --text-hero--letter-spacing: -0.025em;
+    --text-display: 2rem;
+    --text-display--line-height: 2.5rem;
+    --text-display--font-weight: 600;
+    --text-display--letter-spacing: -0.02em;
+    --text-heading: 1.5rem;
+    --text-heading--line-height: 2rem;
+    --text-heading--font-weight: 600;
+    --text-heading--letter-spacing: -0.015em;
+    --text-title: 1.25rem;
+    --text-title--line-height: 1.75rem;
+    --text-title--font-weight: 600;
+    --text-title--letter-spacing: -0.01em;
+    --text-body: 1rem;
+    --text-body--line-height: 1.5rem;
+    --text-body--font-weight: 400;
+    --text-body-sm: 0.875rem;
+    --text-body-sm--line-height: 1.25rem;
+    --text-body-sm--font-weight: 400;
+    --text-label: 0.875rem;
+    --text-label--line-height: 1.25rem;
+    --text-label--font-weight: 500;
+    --text-caption: 0.75rem;
+    --text-caption--line-height: 1rem;
+    --text-caption--font-weight: 500;
+    --text-caption--letter-spacing: 0.01em;
+    --text-mono-lg: 1.5rem;
+    --text-mono-lg--line-height: 2rem;
+    --text-mono-lg--font-weight: 500;
+    --text-mono-lg--letter-spacing: -0.01em;
+    --text-mono: 0.875rem;
+    --text-mono--line-height: 1.25rem;
+    --text-mono--font-weight: 500;
+    --text-mono-sm: 0.75rem;
+    --text-mono-sm--line-height: 1rem;
+    --text-mono-sm--font-weight: 500;
+    --text-mono-sm--letter-spacing: 0.02em;
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+@layer base {
+    * {
+        @apply border-border outline-ring/50;
+    }
+
+    body {
+        @apply bg-background text-foreground font-sans antialiased;
+    }
+
+    :focus-visible {
+        outline: 2px solid var(--ring);
+        outline-offset: 2px;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
 }
