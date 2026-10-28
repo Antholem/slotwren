@@ -1,9 +1,12 @@
 import type { NextConfig } from "next";
 
+// Validate env at build and dev start so a bad config fails fast.
+import "./src/env";
+
 const nextConfig: NextConfig = {
-  /* config options here */
   cacheComponents: true,
   partialPrefetching: true,
+  typedRoutes: true,
   turbopack: {
     rules: {
       "*.css": {
