@@ -58,6 +58,10 @@ jobs:
             --override-name db.url=DATABASE_URL \
             | grep -E '^(NEXT_PUBLIC_SUPABASE_URL|NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY|SUPABASE_SECRET_KEY|DATABASE_URL)=' \
             | sed 's/"//g' >> "$GITHUB_ENV"
+      - name: Seed Lumen Studio (exercises the constraints with real data)
+        run: pnpm db:seed
+        env:
+          SKIP_ENV_VALIDATION: "false"
       - run: pnpm test:integration
         env:
           SKIP_ENV_VALIDATION: "false"
