@@ -14,8 +14,21 @@ const isProductionDeploy = process.env.VERCEL_ENV === "production";
 /** Optional locally, required in production. */
 const prodRequired = () => (isProductionDeploy ? z.string().min(1) : z.string().min(1).optional());
 
+/**
+ * Without an explicit NEXT_PUBLIC_APP_URL, Vercel deploys use their own URL
+ * (Vercel exposes NEXT_PUBLIC_VERCEL_* to Next.js automatically), so preview
+ * links in emails and manage pages point at the preview, not localhost.
+ */
+function defaultAppUrl() {
+  const host =
+    process.env.NEXT_PUBLIC_VERCEL_ENV === "production"
+      ? process.env.NEXT_PUBLIC_VERCEL_PROJECT_PRODUCTION_URL
+      : (process.env.NEXT_PUBLIC_VERCEL_BRANCH_URL ?? process.env.NEXT_PUBLIC_VERCEL_URL);
+  return host ? `https://${host}` : "http://localhost:3000";
+}
+
 const clientSchema = z.object({
-  NEXT_PUBLIC_APP_URL: z.url().default("http://localhost:3000"),
+  NEXT_PUBLIC_APP_URL: z.url(),
   NEXT_PUBLIC_SUPABASE_URL: z.url(),
   NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: z.string().min(1),
   NEXT_PUBLIC_SENTRY_DSN: z.url().optional(),
@@ -95,7 +108,7 @@ function parse<T extends z.ZodType>(schema: T, values: Record<string, unknown>):
 
 // NEXT_PUBLIC_* must be referenced by full name so Next inlines them into the client bundle.
 export const clientEnv: ClientEnv = parse(clientSchema, {
-  NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL,
+  NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL || defaultAppUrl(),
   NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
   NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY,
   NEXT_PUBLIC_SENTRY_DSN: process.env.NEXT_PUBLIC_SENTRY_DSN,
