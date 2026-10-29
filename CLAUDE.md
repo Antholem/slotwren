@@ -158,8 +158,10 @@ These are hard rules. If a task seems to need breaking one, stop and ask.
   `scripts/` builds its own Drizzle connection.
 - Drizzle connects as `postgres`, which **bypasses RLS**. RLS only applies inside
   `withRls`.
-- Env keys for unbuilt features are optional locally and on previews, and required when
-  `VERCEL_ENV=production`.
+- Env keys for unbuilt features (AI, Resend, Stripe, Inngest, Upstash) are optional
+  everywhere, including Vercel Production, until `REQUIRE_FEATURE_KEYS=true`. That's set
+  on Vercel Production at launch (Phase 5). When you add a feature key to `src/env.ts`,
+  use `featureKey()` and mark it `(launch)` in `.env.example`.
 
 ## Definition of done
 

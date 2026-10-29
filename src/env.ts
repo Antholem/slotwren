@@ -4,15 +4,17 @@ import { z } from "zod";
  * Validated environment. Import `env` (server) or `clientEnv` (anywhere) instead
  * of reading process.env directly.
  *
- * Keys for features that aren't built yet are optional in development and
- * required on a production deploy (VERCEL_ENV=production), so a misconfigured
- * deploy fails at boot instead of at the first booking.
+ * Keys for features that aren't built yet (AI, email, billing, jobs, rate
+ * limiting) are optional everywhere until REQUIRE_FEATURE_KEYS=true, which is
+ * set on Vercel Production at launch (Phase 5). From then on a misconfigured
+ * deploy fails at build instead of at the first booking. It's opt-in because
+ * Vercel builds main as Production long before every key exists.
  */
 
-const isProductionDeploy = process.env.VERCEL_ENV === "production";
+const requireFeatureKeys = process.env.REQUIRE_FEATURE_KEYS === "true";
 
-/** Optional locally, required in production. */
-const prodRequired = () => (isProductionDeploy ? z.string().min(1) : z.string().min(1).optional());
+/** Optional until REQUIRE_FEATURE_KEYS=true. */
+const featureKey = () => (requireFeatureKeys ? z.string().min(1) : z.string().min(1).optional());
 
 /**
  * Without an explicit NEXT_PUBLIC_APP_URL, Vercel deploys use their own URL
@@ -44,26 +46,26 @@ const serverSchema = z
 
     // AI receptionist
     AI_PROVIDER: z.enum(["gemini", "anthropic"]).default("gemini"),
-    AI_MODEL: prodRequired(),
+    AI_MODEL: featureKey(),
     GOOGLE_GENERATIVE_AI_API_KEY: z.string().min(1).optional(),
     ANTHROPIC_API_KEY: z.string().min(1).optional(),
 
     // Email
-    RESEND_API_KEY: prodRequired(),
+    RESEND_API_KEY: featureKey(),
     EMAIL_FROM: z.string().min(1).default("Slotwren <bookings@slotwren.com>"),
 
     // Billing
-    STRIPE_SECRET_KEY: prodRequired(),
-    STRIPE_WEBHOOK_SECRET: prodRequired(),
-    STRIPE_PRO_PRICE_ID: prodRequired(),
+    STRIPE_SECRET_KEY: featureKey(),
+    STRIPE_WEBHOOK_SECRET: featureKey(),
+    STRIPE_PRO_PRICE_ID: featureKey(),
 
     // Background jobs (the local Inngest dev server needs no keys)
-    INNGEST_EVENT_KEY: prodRequired(),
-    INNGEST_SIGNING_KEY: prodRequired(),
+    INNGEST_EVENT_KEY: featureKey(),
+    INNGEST_SIGNING_KEY: featureKey(),
 
     // Rate limiting
-    UPSTASH_REDIS_REST_URL: isProductionDeploy ? z.url() : z.url().optional(),
-    UPSTASH_REDIS_REST_TOKEN: prodRequired(),
+    UPSTASH_REDIS_REST_URL: requireFeatureKeys ? z.url() : z.url().optional(),
+    UPSTASH_REDIS_REST_TOKEN: featureKey(),
 
     // Monitoring
     SENTRY_DSN: z.url().optional(),
@@ -75,7 +77,7 @@ const serverSchema = z
       anthropic: "ANTHROPIC_API_KEY",
     } as const;
     const key = keyFor[env.AI_PROVIDER];
-    if (isProductionDeploy && !env[key]) {
+    if (requireFeatureKeys && !env[key]) {
       ctx.addIssue({
         code: "custom",
         path: [key],
