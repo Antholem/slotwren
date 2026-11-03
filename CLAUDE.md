@@ -32,7 +32,7 @@ Don't substitute any of these without asking.
 
 ```bash
 pnpm dev                 # Next dev server (needs .env.local; see .env.example)
-pnpm db:start            # local Supabase (Docker); applies migrations on first start
+pnpm db:start            # local Supabase (Docker), minus logflare/vector/edge-runtime/imgproxy/supavisor
 pnpm db:reset            # recreate local DB from supabase/migrations
 pnpm db:seed             # Lumen Studio demo data (idempotent: replaces the demo business)
 
@@ -147,6 +147,11 @@ These are hard rules. If a task seems to need breaking one, stop and ask.
   `chore: …`, `docs: …`).
 
 ## Gotchas
+
+- Start local Supabase with `pnpm db:start`, not bare `supabase start`. The full stack
+  fails its health checks on the dev machine (Docker has ~6 GB RAM), so the script skips
+  analytics (logflare, vector), edge functions, image transforms and the pooler. Nothing
+  in the app uses them locally. Mailpit, Studio, Auth, Storage and Realtime still run.
 
 - Next.js 16.4 differs from older versions. Read `node_modules/next/dist/docs/` before
   using an API you're unsure of (see AGENTS.md).

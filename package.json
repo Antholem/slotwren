@@ -14,7 +14,7 @@
     "test:watch": "vitest --project unit --project components",
     "test:integration": "vitest run --project integration",
     "test:e2e": "playwright test",
-    "db:start": "supabase start",
+    "db:start": "supabase start -x logflare,vector,edge-runtime,imgproxy,supavisor",
     "db:stop": "supabase stop",
     "db:status": "supabase status",
     "db:reset": "supabase db reset",
