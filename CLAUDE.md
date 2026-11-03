@@ -8,6 +8,7 @@ Multi-tenant booking SaaS for small service businesses (salons, clinics, tutors,
 - Mockups, one folder per page: `docs/design/`. Match them.
 - Approved data model and RLS strategy: `docs/proposal-foundation.md`
 - Decision records: `docs/adr/`
+- Auth setup (Google sign-in, local email viewer): `docs/auth-setup.md`
 
 ## Stack
 
