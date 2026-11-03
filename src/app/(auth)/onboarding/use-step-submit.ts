@@ -19,7 +19,10 @@ type StepAction = (values: unknown, intent: Intent) => Promise<Result<never, str
  * If the step isn't valid yet, it signs out without saving this step;
  * earlier steps are already saved.
  */
-export function useStepSubmit<T extends FieldValues>(form: UseFormReturn<T>, action: StepAction) {
+export function useStepSubmit<T extends FieldValues, Output = T>(
+  form: UseFormReturn<T, unknown, Output>,
+  action: StepAction,
+) {
   const [pending, startTransition] = useTransition();
   const [formError, setFormError] = useState<string | null>(null);
 

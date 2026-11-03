@@ -10,6 +10,7 @@ import {
   isSlugAvailable,
   saveBasics,
   saveBrand,
+  saveFirstService,
   staffNameFor,
 } from "@/server/db/queries/onboarding";
 import * as schema from "@/server/db/schema";
@@ -98,6 +99,36 @@ describe("onboarding wizard", () => {
       logoUrl: null,
       setupStep: 2,
     });
+  });
+
+  it("step 3 creates the first service, assigned to the owner, and updates it on a revisit", async () => {
+    const service = {
+      name: "Haircut",
+      durationMin: 45,
+      price: 3500,
+      bufferAfterMin: 15,
+      description: null,
+    };
+    await saveFirstService(owner, businessId, service);
+    await saveFirstService(owner, businessId, { ...service, name: "Haircut & Style" });
+
+    const rows = await db
+      .select()
+      .from(schema.services)
+      .where(eq(schema.services.businessId, businessId));
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      name: "Haircut & Style",
+      priceCents: 3500,
+      bufferAfterMin: 15,
+    });
+
+    const assigned = await db
+      .select()
+      .from(schema.staffServices)
+      .where(eq(schema.staffServices.serviceId, rows[0]!.id));
+    expect(assigned).toHaveLength(1);
+    expect((await getSetupState(owner))?.business.setupStep).toBe(3);
   });
 });
 

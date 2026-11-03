@@ -70,6 +70,7 @@ export const serviceSchema = z.object({
     .transform((value) => value || null),
 });
 export type ServiceInput = z.input<typeof serviceSchema>;
+export type ServiceValues = z.output<typeof serviceSchema>;
 
 export const hoursSchema = z.object({ days: weekSchema });
 export type HoursInput = z.input<typeof hoursSchema>;
