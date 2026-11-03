@@ -8,6 +8,9 @@ export default defineConfig({
   fullyParallel: true,
   // Sign-up flows wait for real emails (Mailpit) and run axe on several pages.
   timeout: 60_000,
+  // Locally the dev server compiles routes and server actions on first use,
+  // which can take several seconds under parallel tests.
+  expect: { timeout: 15_000 },
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
   workers: process.env.CI ? 1 : undefined,

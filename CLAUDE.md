@@ -174,6 +174,10 @@ These are hard rules. If a task seems to need breaking one, stop and ask.
   `scripts/` builds its own Drizzle connection.
 - Drizzle connects as `postgres`, which **bypasses RLS**. RLS only applies inside
   `withRls`.
+- `pnpm test:e2e` reuses a running `pnpm dev`, which compiles routes and server actions on
+  first use and can stall under parallel tests. For a reliable local run (what CI does):
+  `pnpm build`, `pnpm start --port 3100`, then `PLAYWRIGHT_BASE_URL=http://localhost:3100
+pnpm test:e2e`. Magic links are followed by path, so any port works.
 - Creating a business via `withRls`: generate the id with `crypto.randomUUID()` and insert
   **without** `.returning()`. A trigger makes the creator the owner, but Postgres checks
   RETURNING against the select policy before that trigger runs (error 42501).

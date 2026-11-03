@@ -1,26 +1,14 @@
-import AxeBuilder from "@axe-core/playwright";
-import { expect, type Page, test } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 
+import {
+  collectConsoleErrors,
+  expectNoAxeViolations,
+  onThisServer,
+  uniqueEmail,
+} from "../support/e2e";
 import { waitForSignInLink } from "../support/mailpit";
 
 // Needs the local Supabase stack (Auth + Mailpit): `pnpm db:start`.
-
-function collectConsoleErrors(page: Page) {
-  const errors: string[] = [];
-  page.on("console", (msg) => {
-    if (msg.type() === "error" || msg.type() === "warning") errors.push(msg.text());
-  });
-  page.on("pageerror", (error) => errors.push(error.message));
-  return errors;
-}
-
-async function expectNoAxeViolations(page: Page) {
-  const axe = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag22aa"]).analyze();
-  expect(axe.violations).toEqual([]);
-}
-
-const uniqueEmail = (label: string) =>
-  `e2e-${label}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@example.com`;
 
 test("signed-out visitors to /app are sent to sign-in", async ({ page }) => {
   const errors = collectConsoleErrors(page);
@@ -62,7 +50,7 @@ test("sign in by magic link, reach onboarding, leave", async ({ page }) => {
 
   // A brand-new user has no business yet: callback → /app → /onboarding → step 1.
   const link = await waitForSignInLink(address);
-  await page.goto(link);
+  await page.goto(onThisServer(link));
   await expect(page).toHaveURL(/\/onboarding\/basics$/);
   await expect(
     page.getByRole("heading", { level: 1, name: "Tell us about your business" }),
@@ -74,7 +62,7 @@ test("sign in by magic link, reach onboarding, leave", async ({ page }) => {
   await expect(page).toHaveURL(/\/onboarding\/basics$/);
 
   // The wizard's way out. An empty step 1 has nothing to save, so it just signs out.
-  await expect(page.getByText("Detected")).toBeVisible(); // hydrated
+  await expect(page.getByText("Detected")).toBeVisible({ timeout: 15_000 }); // hydrated
   await page.getByRole("button", { name: "Save and finish later" }).click();
   await expect(page).toHaveURL(/\/sign-in\?saved=1$/);
   await expect(page.getByRole("status")).toContainText("Your setup is saved");
@@ -83,7 +71,7 @@ test("sign in by magic link, reach onboarding, leave", async ({ page }) => {
   await expect(page).toHaveURL(/\/sign-in\?next=%2Fonboarding$/);
 
   // The link worked once; using it again explains what happened.
-  await page.goto(link);
+  await page.goto(onThisServer(link));
   await expect(page).toHaveURL(/\/sign-in\?error=link$/);
   await expect(
     page.getByRole("alert").filter({ hasText: "expired or was already used" }),
