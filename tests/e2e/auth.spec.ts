@@ -46,7 +46,7 @@ test("an invalid email is explained next to the field", async ({ page }) => {
   await expect(email).toHaveValue("not-an-email");
 });
 
-test("sign in by magic link, reach onboarding, sign out", async ({ page }) => {
+test("sign in by magic link, reach onboarding, leave", async ({ page }) => {
   const errors = collectConsoleErrors(page);
   const address = uniqueEmail("signin");
 
@@ -60,23 +60,24 @@ test("sign in by magic link, reach onboarding, sign out", async ({ page }) => {
   });
   await expect(page.getByText(address)).toBeVisible();
 
-  // A brand-new user has no business yet: callback → /app → /onboarding.
+  // A brand-new user has no business yet: callback → /app → /onboarding → step 1.
   const link = await waitForSignInLink(address);
   await page.goto(link);
-  await expect(page).toHaveURL(/\/onboarding$/);
+  await expect(page).toHaveURL(/\/onboarding\/basics$/);
   await expect(
-    page.getByRole("heading", { level: 1, name: "Let’s set up your business" }),
+    page.getByRole("heading", { level: 1, name: "Tell us about your business" }),
   ).toBeVisible();
-  await expect(page.getByText(`Signed in as ${address}`)).toBeVisible();
   await expectNoAxeViolations(page);
 
-  // Signed in, /sign-in bounces back into the app.
+  // Signed in, /sign-in bounces back into the app (and on to the wizard).
   await page.goto("/sign-in");
-  await expect(page).toHaveURL(/\/onboarding$/);
+  await expect(page).toHaveURL(/\/onboarding\/basics$/);
 
-  await page.getByRole("button", { name: "Sign out" }).click();
-  await expect(page).toHaveURL(/\/sign-in\?signed_out=1$/);
-  await expect(page.getByRole("status")).toHaveText("You've signed out.");
+  // The wizard's way out. An empty step 1 has nothing to save, so it just signs out.
+  await expect(page.getByText("Detected")).toBeVisible(); // hydrated
+  await page.getByRole("button", { name: "Save and finish later" }).click();
+  await expect(page).toHaveURL(/\/sign-in\?saved=1$/);
+  await expect(page.getByRole("status")).toContainText("Your setup is saved");
 
   await page.goto("/onboarding");
   await expect(page).toHaveURL(/\/sign-in\?next=%2Fonboarding$/);
