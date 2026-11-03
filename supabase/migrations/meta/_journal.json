@@ -15,6 +15,13 @@
       "when": 1793223869522,
       "tag": "20261028214429_constraints_rls_triggers",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1793695603285,
+      "tag": "20261103084643_memberships_select_own",
+      "breakpoints": true
     }
   ]
 }
