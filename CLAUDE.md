@@ -101,7 +101,10 @@ These are hard rules. If a task seems to need breaking one, stop and ask.
 1. **Multi-tenant.** Every tenant table has `business_id`. Isolation is enforced twice:
    Postgres RLS **and** an explicit `business_id` filter in every query in
    `src/server/db/queries`. Never query tenant data from client components (ESLint
-   blocks `@/server` imports from `components/`, `hooks/` and `lib/`).
+   blocks `@/server` imports from `components/`, `hooks/` and `lib/`). A new table
+   needs RLS enabled and policies in a custom migration:
+   `tests/integration/rls-coverage.test.ts` fails otherwise, and `rls.test.ts` picks up
+   any table with `business_id` and fails until `fillTenant()` creates a row in it.
 2. **Two ways into the database** (`src/server/db/client.ts`):
    - `withRls(claims, fn)`: anything done as a signed-in user (dashboard). Runs as the
      `authenticated` role with the user's JWT claims, so RLS applies.
