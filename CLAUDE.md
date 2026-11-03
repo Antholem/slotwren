@@ -79,8 +79,11 @@ src/
   lib/                   client-safe pure helpers: result.ts, money, dates, utils
   server/                server-only (`import "server-only"`)
     db/schema.ts         Drizzle schema
-    db/client.ts         adminDb and withRls()
-    db/queries/          tenant-scoped data access, one file per aggregate
+    db/client.ts         withRls() (and the raw adminDb, used only by db/admin.ts)
+    db/admin.ts          adminQuery() / tenantLookup(): the only doors to adminDb
+    db/queries/          dashboard data access via withRls, one file per aggregate
+    db/queries/public/   adminQuery-based reads for booking page, embed, manage, AI
+    db/queries/system/   adminQuery-based access for webhooks and jobs
     booking/slots.ts     PURE slot engine
     booking/service.ts   the ONE booking write path
     ai/                  model.ts, prompt.ts, tools.ts
@@ -106,6 +109,10 @@ These are hard rules. If a task seems to need breaking one, stop and ask.
      page, manage links, AI chat, webhooks, jobs, seed. **Every adminDb query function
      takes `businessId` as a required parameter**. The only exceptions are the lookups
      that resolve a tenant (by slug, manage-token hash, Stripe customer ID).
+     Enforced: never import `adminDb` directly. Define queries with `adminQuery` (requires
+     `businessId` by type) or `tenantLookup` from `src/server/db/admin.ts`, and only in
+     `src/server/db/queries/public/` or `queries/system/`. ESLint blocks everything else.
+   - Who may do what under RLS (owner vs staff) is in `docs/adr/0002-rls-strategy.md`.
    - **Public queries select explicit public columns** and return `Public…` types. Never
      customer emails or phones, private notes, token hashes, Stripe IDs or internal
      settings. `tests/integration/public-data.test.ts` enforces this; add it with the
@@ -164,6 +171,11 @@ These are hard rules. If a task seems to need breaking one, stop and ask.
   `scripts/` builds its own Drizzle connection.
 - Drizzle connects as `postgres`, which **bypasses RLS**. RLS only applies inside
   `withRls`.
+- Creating a business via `withRls`: generate the id with `crypto.randomUUID()` and insert
+  **without** `.returning()`. A trigger makes the creator the owner, but Postgres checks
+  RETURNING against the select policy before that trigger runs (error 42501).
+- Under `withRls`, an UPDATE or DELETE that RLS filters out affects 0 rows without an
+  error; check the row count. Blocked INSERTs and missing column grants raise 42501.
 - Env keys for unbuilt features (AI, Resend, Stripe, Inngest, Upstash) are optional
   everywhere, including Vercel Production, until `REQUIRE_FEATURE_KEYS=true`. That's set
   on Vercel Production at launch (Phase 5). When you add a feature key to `src/env.ts`,
