@@ -100,7 +100,7 @@ export function BasicsForm({ timeZones, initial, preview }: Props) {
             placeholder="Lumen Studio"
             aria-invalid={!!formState.errors.name || undefined}
             aria-describedby={formState.errors.name ? ids.nameError : undefined}
-            className="h-11 px-3 text-body"
+            className="h-11 px-3 text-body md:text-body"
             {...nameField}
           />
           <FieldError id={ids.nameError} message={formState.errors.name?.message} />

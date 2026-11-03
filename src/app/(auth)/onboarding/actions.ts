@@ -123,7 +123,34 @@ export async function saveBrandAction(input: unknown, rawIntent: unknown): Promi
   }
 
   await saveBrand(claims, business.id, parsed.data);
+  await removeUnusedLogos(business.id, parsed.data.logoUrl);
   return proceed(intent, "/onboarding/service");
+}
+
+/**
+ * Delete earlier uploads (replaced or removed logos) from the business's
+ * folder, as the owner so Storage RLS applies. Best effort: a leftover file
+ * costs a few KB, so failures are logged, not shown.
+ */
+async function removeUnusedLogos(businessId: string, keepUrl: string | null) {
+  const supabase = await createSupabaseServerClient();
+  const bucket = supabase.storage.from("logos");
+  const { data: files, error } = await bucket.list(businessId);
+  if (error) {
+    console.error("Listing logos failed", { businessId, message: error.message });
+    return;
+  }
+  const keep = keepUrl
+    ? decodeURIComponent(new URL(keepUrl).pathname.split("/").pop() ?? "")
+    : null;
+  const stale = files
+    .filter((file) => file.name !== keep)
+    .map((file) => `${businessId}/${file.name}`);
+  if (stale.length === 0) return;
+  const { error: removeError } = await bucket.remove(stale);
+  if (removeError) {
+    console.error("Removing old logos failed", { businessId, message: removeError.message });
+  }
 }
 
 // ── Step 3 ──────────────────────────────────────────────────────────────

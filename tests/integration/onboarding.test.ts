@@ -9,6 +9,7 @@ import {
   getSetupState,
   isSlugAvailable,
   saveBasics,
+  saveBrand,
   staffNameFor,
 } from "@/server/db/queries/onboarding";
 import * as schema from "@/server/db/schema";
@@ -88,6 +89,15 @@ describe("onboarding wizard", () => {
     expect(await isSlugAvailable(owner, slug, businessId)).toBe(true);
     expect(await isSlugAvailable(owner, slug)).toBe(false);
     expect(await isSlugAvailable(owner, "lumen-studio", businessId)).toBe(false); // the seed
+  });
+
+  it("step 2 saves the brand and advances to step 2", async () => {
+    await saveBrand(owner, businessId, { brandColor: "#BE123C", logoUrl: null });
+    expect((await getSetupState(owner))?.business).toMatchObject({
+      brandColor: "#BE123C",
+      logoUrl: null,
+      setupStep: 2,
+    });
   });
 });
 

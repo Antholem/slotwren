@@ -75,7 +75,7 @@ function MagicLinkForm({ next, onReset }: { next?: string; onReset: () => void }
           onChange={(event) => setEmail(event.target.value)}
           aria-invalid={fieldError || undefined}
           aria-describedby={fieldError ? errorId : undefined}
-          className="h-11 px-3 text-body"
+          className="h-11 px-3 text-body md:text-body"
         />
         {fieldError && (
           <p id={errorId} className="text-body-sm text-danger-text">

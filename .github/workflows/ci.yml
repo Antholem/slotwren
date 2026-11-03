@@ -46,9 +46,9 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      # Only Postgres + Auth are needed; skip the rest to keep CI fast.
+      # Postgres, Auth and Storage (logo bucket policies); skip the rest to keep CI fast.
       - name: Start Supabase
-        run: pnpm exec supabase start -x studio,imgproxy,edge-runtime,logflare,vector,mailpit,storage-api,realtime,postgres-meta,supavisor
+        run: pnpm exec supabase start -x studio,imgproxy,edge-runtime,logflare,vector,mailpit,realtime,postgres-meta,supavisor
       - name: Export Supabase env
         run: |
           pnpm exec supabase status -o env \
@@ -80,9 +80,9 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      # Auth sign-in tests need Postgres, Auth and Mailpit (magic-link emails).
+      # Sign-up needs Postgres, Auth and Mailpit (magic-link emails); onboarding uploads to Storage.
       - name: Start Supabase
-        run: pnpm exec supabase start -x studio,imgproxy,edge-runtime,logflare,vector,storage-api,realtime,postgres-meta,supavisor
+        run: pnpm exec supabase start -x studio,imgproxy,edge-runtime,logflare,vector,realtime,postgres-meta,supavisor
       - name: Export Supabase env
         run: |
           pnpm exec supabase status -o env \
