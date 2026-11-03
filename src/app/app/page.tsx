@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { Suspense } from "react";
 
 import { SignedInTopBar } from "@/components/shared/top-bar";
@@ -30,7 +31,10 @@ async function SignedInAs() {
   const user = await requireUser();
   return (
     <p className="mt-2 text-body text-muted-foreground">
-      Signed in as <span className="font-medium text-foreground">{user.email}</span>.
+      Signed in as <span className="font-medium text-foreground">{user.email}</span>.{" "}
+      <Link href="/onboarding/live" className="text-primary underline underline-offset-4">
+        Your booking link and QR code
+      </Link>
     </p>
   );
 }

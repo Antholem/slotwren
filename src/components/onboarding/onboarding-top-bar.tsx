@@ -25,14 +25,15 @@ export function OnboardingTopBar({ variant }: { variant: "steps" | "live" }) {
           Save and finish later
         </button>
       ) : (
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1 sm:gap-2">
           <Link
             href="/app"
             className="min-h-11 content-center rounded-md px-3 text-label underline underline-offset-4 hover:text-primary focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
           >
-            Go to dashboard
+            <span className="sm:hidden">Dashboard</span>
+            <span className="hidden sm:inline">Go to dashboard</span>
           </Link>
-          <SignOutButton />
+          <SignOutButton compact />
         </div>
       )}
     </header>
