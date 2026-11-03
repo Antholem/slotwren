@@ -3,6 +3,7 @@ import { randomBytes } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
+import { defaultWeek } from "@/lib/hours";
 import type { RlsClaims } from "@/server/db/client";
 import {
   getAccountStatus,
@@ -11,6 +12,7 @@ import {
   saveBasics,
   saveBrand,
   saveFirstService,
+  saveHours,
   staffNameFor,
 } from "@/server/db/queries/onboarding";
 import * as schema from "@/server/db/schema";
@@ -129,6 +131,37 @@ describe("onboarding wizard", () => {
       .where(eq(schema.staffServices.serviceId, rows[0]!.id));
     expect(assigned).toHaveLength(1);
     expect((await getSetupState(owner))?.business.setupStep).toBe(3);
+  });
+
+  it("step 4 saved for later stores the hours but doesn't go live", async () => {
+    await saveHours(owner, businessId, defaultWeek(), { goLive: false });
+    const state = await getSetupState(owner);
+    expect(state?.hours).toHaveLength(5);
+    expect(state?.business).toMatchObject({ setupStep: 3, onboardedAt: null });
+    expect(await getAccountStatus(owner)).toBe("setup");
+  });
+
+  it("step 4 finished replaces the hours and puts the business live", async () => {
+    const days = defaultWeek().map((day) =>
+      day.weekday === 1
+        ? {
+            ...day,
+            ranges: [
+              { start: "09:00", end: "12:00" },
+              { start: "13:00", end: "18:00" },
+            ],
+          }
+        : day,
+    );
+    await saveHours(owner, businessId, days, { goLive: true });
+
+    const live = await getSetupState(owner, { includeLive: true });
+    expect(live?.hours).toHaveLength(6);
+    expect(live?.business.setupStep).toBe(4);
+    expect(live?.business.onboardedAt).toBeInstanceOf(Date);
+    expect(await getAccountStatus(owner)).toBe("ready");
+    // Nothing left in progress: the wizard is done.
+    expect(await getSetupState(owner)).toBeNull();
   });
 });
 
