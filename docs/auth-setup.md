@@ -15,6 +15,28 @@ How the pieces fit:
 | Route protection          | `src/proxy.ts`: no session → `/sign-in`, no business → `/onboarding` |
 | Magic-link email template | `supabase/templates/magic-link.html`                                 |
 
+## Before production
+
+Do these once against the hosted Supabase project before launch, and redo step 2 whenever
+`supabase/migrations/` changes.
+
+- [ ] **Link the CLI to the hosted project.** `pnpm exec supabase login`, then
+      `pnpm exec supabase link --project-ref <project-ref>` (the ref is in the project URL;
+      it asks for the database password).
+- [ ] **Push the migrations.** `pnpm exec supabase db push --dry-run` to list what will
+      run, then `pnpm exec supabase db push`. This creates the schema, the
+      `no_double_booking` constraint and every RLS policy. Never run `db reset` against
+      the hosted project.
+- [ ] **Site URL and redirect URLs.** Authentication → URL Configuration, as in
+      [2b. Hosted Supabase](#2b-hosted-supabase-production), step 2. Without the
+      redirect URLs, sign-in links fall back to the Site URL and lose the callback.
+- [ ] **Magic-link templates.** Magic link and Confirm signup, as in
+      [Hosted email setup](#hosted-email-setup-before-launch).
+- [ ] **SMTP.** Resend as the sender, also under
+      [Hosted email setup](#hosted-email-setup-before-launch).
+- [ ] **Google (optional).** [Enabling Google sign-in](#enabling-google-sign-in), steps 1
+      and 2b. Skip it and the sign-in page simply shows email only.
+
 ## Local development
 
 Magic-link emails never leave your machine. They land in the local Supabase stack's mail
