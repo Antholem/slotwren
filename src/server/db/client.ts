@@ -15,9 +15,9 @@ import * as schema from "./schema";
  *   the `authenticated` role, so Postgres RLS applies on top of the explicit
  *   business_id filters in src/server/db/queries.
  * - adminDb: bypasses RLS. Only for paths without a signed-in user (public
- *   booking page, manage links, AI chat, webhooks, jobs, seed). Every query
- *   function built on it must take a businessId argument and select only the
- *   fields that path needs.
+ *   booking page, manage links, AI chat, webhooks, jobs). Don't import it
+ *   directly (ESLint blocks it): build queries with adminQuery/tenantLookup in
+ *   ./admin.ts, which require a businessId by type.
  */
 
 function createClient() {
