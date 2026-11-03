@@ -1,6 +1,6 @@
 import { randomBytes, randomUUID } from "node:crypto";
 
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 
@@ -15,6 +15,23 @@ export function connectTestDb() {
 }
 
 export type TestDb = ReturnType<typeof connectTestDb>["db"];
+
+/**
+ * Tenant tables as the database sees them: public tables with a business_id
+ * column. Read from the catalog so a new table is covered by the isolation
+ * tests without anyone remembering to add it.
+ */
+export async function listTenantTables(db: TestDb): Promise<string[]> {
+  const rows = await db.execute<{ table_name: string }>(sql`
+    select c.table_name
+    from information_schema.columns c
+    join information_schema.tables t
+      on t.table_schema = c.table_schema and t.table_name = c.table_name
+    where c.table_schema = 'public' and c.column_name = 'business_id' and t.table_type = 'BASE TABLE'
+    order by c.table_name
+  `);
+  return rows.map((row) => row.table_name);
+}
 
 /** A throwaway business with one staff member, one service and one customer. */
 export async function createFixtureBusiness(db: TestDb) {
