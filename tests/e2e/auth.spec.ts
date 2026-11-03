@@ -54,7 +54,10 @@ test("sign in by magic link, reach onboarding, sign out", async ({ page }) => {
   await page.getByLabel("Email").fill(address);
   await page.getByRole("button", { name: "Email me a sign-in link" }).click();
 
-  await expect(page.getByRole("heading", { name: "Check your email" })).toBeFocused();
+  // Sending goes through Auth and SMTP; allow more than the default 5 s.
+  await expect(page.getByRole("heading", { name: "Check your email" })).toBeFocused({
+    timeout: 15_000,
+  });
   await expect(page.getByText(address)).toBeVisible();
 
   // A brand-new user has no business yet: callback → /app → /onboarding.
