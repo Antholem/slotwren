@@ -1,12 +1,13 @@
 import type { NextRequest } from "next/server";
 
-import { hasAnyMembership } from "@/server/db/queries/memberships";
+import { getAccountStatus } from "@/server/db/queries/onboarding";
 import { redirectWithSession, updateSession } from "@/server/supabase/proxy";
 
 /**
  * Refreshes the Supabase session and routes by auth state:
  * - /app/* and /onboarding/* need a signed-in user, else /sign-in?next=…
- * - /app/* also needs a business, else /onboarding
+ * - /app/* also needs a live business, else /onboarding (which resumes the
+ *   wizard where the owner left off)
  * - /sign-in while signed in goes to /app
  *
  * This is the first gate, not the only one: pages and server actions still
@@ -25,7 +26,7 @@ export async function proxy(request: NextRequest) {
     return redirectWithSession(request, response, `/sign-in?next=${next}`);
   }
 
-  if (isAppPath(pathname) && !(await hasAnyMembership(claims))) {
+  if (isAppPath(pathname) && (await getAccountStatus(claims)) !== "ready") {
     return redirectWithSession(request, response, "/onboarding");
   }
 

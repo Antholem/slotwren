@@ -146,7 +146,7 @@ async function main() {
 
       const [business] = await tx
         .insert(schema.businesses)
-        .values({ ...BUSINESS, onboardedAt: now })
+        .values({ ...BUSINESS, setupStep: 4, onboardedAt: now })
         .returning({ id: schema.businesses.id });
       const businessId = business!.id;
 

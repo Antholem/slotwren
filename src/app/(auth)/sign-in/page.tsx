@@ -46,6 +46,12 @@ async function SignIn({ searchParams }: Pick<PageProps<"/sign-in">, "searchParam
   const error = first(params.error);
   const notice: SignInNotice | null =
     (error && NOTICES[error]) ||
+    (first(params.saved)
+      ? {
+          tone: "info",
+          message: "Your setup is saved. Sign in any time to pick up where you left off.",
+        }
+      : null) ||
     (first(params.signed_out) ? { tone: "info", message: "You've signed out." } : null);
 
   return <SignInForm googleEnabled={googleEnabled} next={first(params.next)} notice={notice} />;

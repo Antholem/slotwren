@@ -125,7 +125,10 @@ export const businesses = pgTable(
     aiMonthlyTokenBudget: integer("ai_monthly_token_budget").notNull().default(500_000),
     settings: jsonb("settings").$type<BusinessSettings>().notNull().default({}),
     isDemo: boolean("is_demo").notNull().default(false),
-    onboardedAt: tstz("onboarded_at"),
+    // Onboarding wizard: last completed step (1 basics, 2 brand, 3 first service,
+    // 4 working hours) so an owner can resume where they left off.
+    setupStep: smallint("setup_step").notNull().default(0),
+    onboardedAt: tstz("onboarded_at"), // set when the wizard finishes: the business is live
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
@@ -136,6 +139,7 @@ export const businesses = pgTable(
     check("businesses_max_days", sql`${t.maxDaysAhead} between 1 and 365`),
     check("businesses_slot_interval", sql`${t.slotIntervalMin} in (15, 30)`),
     check("businesses_cancel_window", sql`${t.cancellationWindowHours} >= 0`),
+    check("businesses_setup_step", sql`${t.setupStep} between 0 and 4`),
   ],
 );
 

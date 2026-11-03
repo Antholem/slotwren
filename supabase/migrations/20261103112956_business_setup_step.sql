@@ -1,0 +1,2 @@
+ALTER TABLE "businesses" ADD COLUMN "setup_step" smallint DEFAULT 0 NOT NULL;--> statement-breakpoint
+ALTER TABLE "businesses" ADD CONSTRAINT "businesses_setup_step" CHECK ("businesses"."setup_step" between 0 and 4);
