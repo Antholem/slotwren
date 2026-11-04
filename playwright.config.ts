@@ -1,4 +1,15 @@
+import { existsSync, readFileSync } from "node:fs";
+import { parseEnv } from "node:util";
+
 import { defineConfig, devices } from "@playwright/test";
+
+// Tests that set up data directly (DATABASE_URL, Supabase keys) read .env.local
+// like vitest.config.mts does. Variables already set (e.g. by CI) win.
+if (existsSync(".env.local")) {
+  for (const [key, value] of Object.entries(parseEnv(readFileSync(".env.local", "utf8")))) {
+    process.env[key] ??= value;
+  }
+}
 
 const PORT = Number(process.env.PORT ?? 3000);
 const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? `http://localhost:${PORT}`;
