@@ -1,35 +1,25 @@
 import { ArrowRight, Check } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
-import { redirect } from "next/navigation";
 import QRCode from "qrcode";
 import { Suspense } from "react";
 
-import { OnboardingTopBar } from "@/components/onboarding/onboarding-top-bar";
 import { Button } from "@/components/ui/button";
-import { env } from "@/env";
+import { bookingLinkLabel, bookingUrl } from "@/lib/booking-link";
 import { describeOpenDays, fromAvailabilityRows, sharedHours } from "@/lib/hours";
-import { requireUser, rlsClaimsFor } from "@/server/auth/session";
-import { getSetupState } from "@/server/db/queries/onboarding";
+import { getDashboardContext } from "@/server/auth/dashboard";
+import { listBusinessHours } from "@/server/db/queries/dashboard";
 
-import { bookingHost, resumePath } from "../load-step";
 import { CopyLinkField, LinkActions, QrDownloads } from "./live-actions";
 
 export const metadata: Metadata = { title: "You're live" };
 
-/*
- * The end of onboarding. The mockup (docs/design/setup-settings/2-you're-live)
- * sits inside the dashboard shell; until that shell exists it renders here
- * with the onboarding top bar. Content and order match the mockup.
- */
+/** Where onboarding ends (docs/design/setup-settings/2-you're-live), inside the dashboard shell. */
 export default function LivePage() {
   return (
-    <>
-      <OnboardingTopBar variant="live" />
-      <Suspense fallback={<LiveSkeleton />}>
-        <Live />
-      </Suspense>
-    </>
+    <Suspense fallback={<LiveSkeleton />}>
+      <Live />
+    </Suspense>
   );
 }
 
@@ -49,14 +39,10 @@ const NEXT_STEPS = [
 ];
 
 async function Live() {
-  const claims = rlsClaimsFor(await requireUser());
-  const state = await getSetupState(claims, { includeLive: true });
-  if (!state?.business.onboardedAt) redirect(resumePath(state));
-
-  const { business } = state;
-  const url = new URL(`/b/${business.slug}`, env.NEXT_PUBLIC_APP_URL).toString();
-  const display = `${bookingHost()}/b/${business.slug}`;
-  const days = fromAvailabilityRows(state.hours);
+  const { business, claims } = await getDashboardContext();
+  const url = bookingUrl(business.slug);
+  const display = bookingLinkLabel(business.slug);
+  const days = fromAvailabilityRows(await listBusinessHours(claims, business.id));
   const when = `${describeOpenDays(days)}, ${sharedHours(days) ?? "with hours that vary by day"}`;
   const svg = await QRCode.toString(url, {
     type: "svg",
@@ -66,8 +52,8 @@ async function Live() {
   });
 
   return (
-    <main className="flex flex-1 justify-center bg-background px-4 py-8 sm:px-8 sm:py-12">
-      <div className="flex w-full max-w-6xl flex-col gap-8">
+    <main className="flex w-full max-w-7xl flex-col px-4 py-8 sm:px-6 lg:px-12 lg:py-12">
+      <div className="flex w-full flex-col gap-8">
         <header className="flex items-start gap-4 sm:gap-6">
           <span className="flex size-14 shrink-0 items-center justify-center rounded-full bg-success-soft text-success-text sm:size-16">
             <Check aria-hidden className="size-7 sm:size-8" strokeWidth={2.5} />
@@ -160,9 +146,9 @@ function LiveSkeleton() {
     <main
       aria-busy="true"
       aria-label="Loading your booking link"
-      className="flex flex-1 justify-center bg-background px-4 py-8 sm:px-8 sm:py-12"
+      className="flex w-full max-w-7xl flex-col px-4 py-8 sm:px-6 lg:px-12 lg:py-12"
     >
-      <div className="flex w-full max-w-6xl flex-col gap-8">
+      <div className="flex w-full flex-col gap-8">
         <div className="h-16 w-2/3 animate-pulse rounded-lg bg-muted" />
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
           <div className="h-96 animate-pulse rounded-xl border bg-card" />

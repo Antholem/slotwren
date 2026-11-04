@@ -87,9 +87,9 @@ test("sign up, finish the wizard and see the booking link", async ({ page }) => 
   await page.getByRole("switch", { name: "Open on Saturday" }).click();
   await expect(page.getByText("6 days open. Sundays closed.")).toBeVisible();
   await expectNoAxeViolations(page);
-  await submitTo(page, "Finish and go live", /\/onboarding\/live$/);
+  await submitTo(page, "Finish and go live", /\/app\/live$/);
 
-  // You're live
+  // You're live, inside the dashboard shell
   await expect(
     page.getByRole("heading", { level: 1, name: "You’re live. Customers can book now." }),
   ).toBeVisible();
@@ -128,18 +128,28 @@ test("leaving halfway resumes at the same step", async ({ page }) => {
   await submitTo(page, "Continue", /\/onboarding\/brand$/);
 
   await page.getByLabel("Hex").fill("#BE123C");
-  await submitTo(page, "Save and finish later", /\/sign-in\?saved=1$/);
+  await submitTo(page, "Save and finish later", /\/onboarding\/saved$/);
 
-  // Signing in again (any route) picks up at the first unfinished step.
-  await signInWithMagicLink(page, email);
-  await expect(page).toHaveURL(/\/onboarding\/service$/, { timeout: 15_000 });
+  // Saved, still signed in, and told where setup continues.
+  await expect(page.getByRole("heading", { level: 1, name: "Setup saved" })).toBeVisible();
+  await expect(page.getByText(/straight back to first service/)).toBeVisible();
+  await expectNoAxeViolations(page);
+  await page.getByRole("link", { name: "Continue setup" }).click();
+  await expect(page).toHaveURL(/\/onboarding\/service$/);
 
   // Earlier answers were kept, and later steps can't be skipped to.
   await page.getByRole("link", { name: "Back" }).click();
-  await expect(page).toHaveURL(/\/onboarding\/brand$/, { timeout: 15_000 });
+  await expect(page).toHaveURL(/\/onboarding\/brand$/);
   await expect(page.getByLabel("Hex")).toHaveValue("#BE123C");
   await page.goto("/onboarding/hours");
   await expect(page).toHaveURL(/\/onboarding\/service$/);
   await page.goto("/onboarding/basics");
   await expect(page.getByLabel("Business name")).toHaveValue(name);
+
+  // Signing out and back in also picks up at the first unfinished step.
+  await page.goto("/onboarding/saved");
+  await page.getByRole("button", { name: "Sign out" }).click();
+  await expect(page).toHaveURL(/\/sign-in\?signed_out=1$/);
+  await signInWithMagicLink(page, email);
+  await expect(page).toHaveURL(/\/onboarding\/service$/);
 });

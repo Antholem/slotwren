@@ -1,40 +1,65 @@
+import { ArrowRight, QrCode, Scissors } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Suspense } from "react";
 
-import { SignedInTopBar } from "@/components/shared/top-bar";
-import { requireUser } from "@/server/auth/session";
+import { PageBody, PageHeader } from "@/components/dashboard/page-header";
 
 export const metadata: Metadata = {
-  title: "Dashboard",
+  title: "Today",
 };
 
-// Placeholder until the dashboard shell and Today view land (Phase 3). The proxy
-// only lets members of a business reach /app.
-export default function DashboardPage() {
+// Placeholder until the Today view (schedule, stats, now and next) lands in Phase 3.
+export default function TodayPage() {
   return (
-    <>
-      <SignedInTopBar />
-      <main className="flex flex-1 justify-center bg-background px-4 py-12">
-        <div className="w-full max-w-2xl rounded-xl border bg-card p-6 shadow-sm sm:p-10">
-          <h1 className="text-heading">Dashboard</h1>
-          <Suspense fallback={<div className="mt-2 h-5 w-64 animate-pulse rounded bg-muted" />}>
-            <SignedInAs />
-          </Suspense>
-        </div>
-      </main>
-    </>
+    <PageBody>
+      <PageHeader
+        title="Today"
+        description="Your day at a glance arrives with bookings. Until then, start here."
+      />
+      <ul className="grid gap-4 md:grid-cols-2">
+        <QuickLink
+          href="/app/live"
+          icon={<QrCode aria-hidden className="size-5" />}
+          title="Your booking link"
+          body="Copy it, share it, or print the QR code."
+        />
+        <QuickLink
+          href="/app/services"
+          icon={<Scissors aria-hidden className="size-5" />}
+          title="Services"
+          body="Add the rest of your menu, with prices and durations."
+        />
+      </ul>
+    </PageBody>
   );
 }
 
-async function SignedInAs() {
-  const user = await requireUser();
+function QuickLink({
+  href,
+  icon,
+  title,
+  body,
+}: {
+  href: "/app/live" | "/app/services";
+  icon: React.ReactNode;
+  title: string;
+  body: string;
+}) {
   return (
-    <p className="mt-2 text-body text-muted-foreground">
-      Signed in as <span className="font-medium text-foreground">{user.email}</span>.{" "}
-      <Link href="/onboarding/live" className="text-primary underline underline-offset-4">
-        Your booking link and QR code
+    <li>
+      <Link
+        href={href}
+        className="flex items-center gap-4 rounded-xl border bg-card p-5 hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+      >
+        <span className="flex size-10 items-center justify-center rounded-lg bg-primary-tint text-primary-tint-foreground">
+          {icon}
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block text-label">{title}</span>
+          <span className="block text-body-sm text-muted-foreground">{body}</span>
+        </span>
+        <ArrowRight aria-hidden className="size-4 text-muted-foreground" />
       </Link>
-    </p>
+    </li>
   );
 }

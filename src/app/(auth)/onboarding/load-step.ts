@@ -4,7 +4,7 @@ import type { Route } from "next";
 import { redirect } from "next/navigation";
 
 import type { PreviewProps } from "@/components/onboarding/booking-preview";
-import { env } from "@/env";
+import { bookingHost } from "@/lib/booking-link";
 import { DEFAULT_BRAND_COLOR } from "@/lib/color";
 import { fromAvailabilityRows, openingSummary } from "@/lib/hours";
 import { ONBOARDING_STEPS, type OnboardingStep } from "@/lib/validation/onboarding";
@@ -14,12 +14,9 @@ import { getAccountStatus, getSetupState, type SetupState } from "@/server/db/qu
 /** Where an owner continues: the first step they haven't finished. */
 export function resumePath(state: SetupState | null): Route {
   if (!state) return "/onboarding/basics";
-  if (state.business.onboardedAt) return "/onboarding/live";
+  if (state.business.onboardedAt) return "/app";
   return ONBOARDING_STEPS[Math.min(state.business.setupStep, 3)]!.path;
 }
-
-/** Host shown in booking links: "slotwren.com", "localhost:3000". */
-export const bookingHost = () => new URL(env.NEXT_PUBLIC_APP_URL).host;
 
 /**
  * Load a wizard step for the signed-in owner, redirecting when they can't be
