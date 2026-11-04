@@ -64,7 +64,8 @@ src/
     (marketing)/         landing
     (auth)/              sign-in, auth/callback, onboarding
     app/                 owner dashboard (protected): today, calendar, bookings, customers,
-                         services, staff, ai, insights, settings/*
+                         services, staff, ai, insights, settings/*, live (booking link + QR).
+                         layout.tsx is the shell; server actions per page call src/server/catalog
     b/[slug]/            public booking flow (+ opengraph-image)
     m/[token]/           manage booking (reschedule / cancel)
     embed/[slug]/        iframe target for the widget
@@ -87,7 +88,9 @@ src/
     booking/slots.ts     PURE slot engine
     booking/service.ts   the ONE booking write path
     ai/                  model.ts, prompt.ts, tools.ts
+    catalog/             services etc.: auth + validation + Result, behind server actions
     auth/ billing/ email/ jobs/ supabase/ rate-limit.ts
+                         auth/dashboard.ts: getDashboardContext() (user, business, role)
 embed/embed.ts           widget source, bundled by tsup to public/embed.js
 scripts/seed.ts          Lumen Studio seed
 supabase/                config.toml, migrations/ (drizzle output + custom SQL)
@@ -168,7 +171,13 @@ These are hard rules. If a task seems to need breaking one, stop and ask.
 - `LayoutProps` / `PageProps` are generated globals: `pnpm typecheck` runs `next typegen`
   first.
 - `shadcn` CLI: `components.json` must point at `src/app/globals.css`. It once rewrote
-  `docs/design/globals.css`; never let it touch `docs/`.
+  `docs/design/globals.css`; never let it touch `docs/`. Generated files import `cn` from
+  `"cn"`; switch them to `@/lib/utils` (it knows the type scale). Answer "no" when it asks
+  to overwrite `button.tsx` (it has our AA hover colour).
+- `cn()` doesn't treat variant-prefixed classes as conflicts: to resize a `SheetContent`,
+  use `data-[side=right]:sm:max-w-lg`, not `sm:max-w-lg`.
+- `text-muted-foreground` on `bg-muted` is 4.39:1, which fails AA. Put muted text on
+  `bg-card`/`bg-background` (4.6:1+), or use a bordered badge instead of a muted fill.
 - Next skips `.env.local` when `NODE_ENV=test`, so `vitest.config.mts` reads it directly.
 - Code under `src/server` imports `server-only`; scripts run with tsx can't import it, so
   `scripts/` builds its own Drizzle connection.
