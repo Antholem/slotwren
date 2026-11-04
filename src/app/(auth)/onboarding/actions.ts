@@ -25,7 +25,8 @@ import { createSupabaseServerClient } from "@/server/supabase/server";
  * schema, resolves the business from the signed-in user (never from the
  * client), saves, and moves on. Expected failures come back as Result values.
  *
- * intent "later" ("Save and finish later") saves, then signs out.
+ * intent "later" ("Save and finish later") saves, then shows the "Setup
+ * saved" screen. The owner stays signed in.
  */
 
 const intentSchema = z.enum(["continue", "later"]);
@@ -37,20 +38,16 @@ async function signedIn() {
   return rlsClaimsFor(user);
 }
 
-async function signOutWithProgressSaved(): Promise<never> {
-  const supabase = await createSupabaseServerClient();
-  await supabase.auth.signOut({ scope: "local" });
-  redirect("/sign-in?saved=1");
-}
-
-/** "Save and finish later" when the current step can't be saved as is. */
+/**
+ * "Save and finish later" when the current step can't be saved as is: earlier
+ * steps are already saved, so just show the saved screen.
+ */
 export async function leaveSetup(): Promise<never> {
-  return signOutWithProgressSaved();
+  redirect("/onboarding/saved");
 }
 
-function proceed(intent: Intent, next: Route): Promise<never> | never {
-  if (intent === "later") return signOutWithProgressSaved();
-  redirect(next);
+function proceed(intent: Intent, next: Route): never {
+  redirect(intent === "later" ? "/onboarding/saved" : next);
 }
 
 function invalid(error: z.ZodError): StepResult {
@@ -178,5 +175,5 @@ export async function saveHoursAction(input: unknown, rawIntent: unknown): Promi
 
   // Saving for later keeps the business in setup; Finish puts it live.
   await saveHours(claims, business.id, parsed.data.days, { goLive: intent === "continue" });
-  return proceed(intent, "/onboarding/live");
+  return proceed(intent, "/app/live");
 }

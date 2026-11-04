@@ -61,11 +61,17 @@ test("sign in by magic link, reach onboarding, leave", async ({ page }) => {
   await page.goto("/sign-in");
   await expect(page).toHaveURL(/\/onboarding\/basics$/);
 
-  // The wizard's way out. An empty step 1 has nothing to save, so it just signs out.
+  // The wizard's way out. An empty step 1 has nothing to save, so it just shows the saved screen.
   await expect(page.getByText("Detected")).toBeVisible({ timeout: 15_000 }); // hydrated
   await page.getByRole("button", { name: "Save and finish later" }).click();
-  await expect(page).toHaveURL(/\/sign-in\?saved=1$/);
-  await expect(page.getByRole("status")).toContainText("Your setup is saved");
+  await expect(page).toHaveURL(/\/onboarding\/saved$/);
+  await expect(page.getByRole("heading", { level: 1, name: "Nothing saved yet" })).toBeVisible();
+  await expectNoAxeViolations(page);
+
+  // Still signed in; signing out is a separate choice.
+  await page.getByRole("button", { name: "Sign out" }).click();
+  await expect(page).toHaveURL(/\/sign-in\?signed_out=1$/);
+  await expect(page.getByRole("status")).toHaveText("You've signed out.");
 
   await page.goto("/onboarding");
   await expect(page).toHaveURL(/\/sign-in\?next=%2Fonboarding$/);

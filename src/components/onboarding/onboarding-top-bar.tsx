@@ -1,20 +1,17 @@
-import Link from "next/link";
-
 import { Logo } from "@/components/shared/logo";
-import { SignOutButton } from "@/components/shared/sign-out-button";
 
 import { STEP_FORM_ID } from "./step-shell";
 
 /**
  * Wizard steps: "Save and finish later" submits the current step's form with
- * intent=later (save if valid, then sign out). The "You're live" page offers
- * the dashboard and sign-out instead.
+ * intent=later (save if valid, then the "Setup saved" screen). Other
+ * onboarding pages show just the logo.
  */
-export function OnboardingTopBar({ variant }: { variant: "steps" | "live" }) {
+export function OnboardingTopBar({ variant }: { variant: "steps" | "plain" }) {
   return (
     <header className="flex h-16 items-center justify-between gap-4 border-b bg-card px-4 sm:h-20 sm:px-8">
       <Logo />
-      {variant === "steps" ? (
+      {variant === "steps" && (
         <button
           type="submit"
           form={STEP_FORM_ID}
@@ -24,17 +21,6 @@ export function OnboardingTopBar({ variant }: { variant: "steps" | "live" }) {
         >
           Save and finish later
         </button>
-      ) : (
-        <div className="flex items-center gap-1 sm:gap-2">
-          <Link
-            href="/app"
-            className="min-h-11 content-center rounded-md px-3 text-label underline underline-offset-4 hover:text-primary focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
-          >
-            <span className="sm:hidden">Dashboard</span>
-            <span className="hidden sm:inline">Go to dashboard</span>
-          </Link>
-          <SignOutButton compact />
-        </div>
       )}
     </header>
   );
