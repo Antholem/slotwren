@@ -141,6 +141,7 @@ export const businesses = pgTable(
   (t) => [
     check("businesses_slug_format", sql`${t.slug} ~ '^[a-z0-9][a-z0-9-]{1,46}[a-z0-9]$'`),
     check("businesses_brand_color_hex", sql`${t.brandColor} ~ '^#[0-9A-Fa-f]{6}$'`),
+    check("businesses_currency_code", sql`${t.currency} ~ '^[A-Z]{3}$'`),
     check("businesses_min_notice", sql`${t.minNoticeMin} >= 0`),
     check("businesses_max_days", sql`${t.maxDaysAhead} between 1 and 365`),
     check("businesses_slot_interval", sql`${t.slotIntervalMin} in (15, 30)`),

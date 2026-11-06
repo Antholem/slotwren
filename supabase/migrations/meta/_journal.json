@@ -64,6 +64,13 @@
       "when": 1793987216315,
       "tag": "20261106174656_opening_hours_backfill",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1794004894781,
+      "tag": "20261106224134_currency_check",
+      "breakpoints": true
     }
   ]
 }
