@@ -14,6 +14,12 @@ export function collectConsoleErrors(page: Page) {
 }
 
 export async function expectNoAxeViolations(page: Page) {
+  // Judge the settled UI: a toast or sheet mid-fade has text at partial opacity.
+  await page
+    .waitForFunction(() => document.getAnimations().every((a) => a.playState !== "running"), null, {
+      timeout: 5_000,
+    })
+    .catch(() => {}); // an endless animation (spinner) shouldn't block the scan
   const axe = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag22aa"]).analyze();
   expect(axe.violations).toEqual([]);
 }
@@ -30,15 +36,28 @@ export function onThisServer(link: string) {
   return url.pathname + url.search;
 }
 
-/** Request a magic link for `email` and follow it from Mailpit. */
-export async function signInWithMagicLink(page: Page, email: string) {
-  await page.goto("/sign-in");
+/**
+ * Request a magic link for `email` and follow it from Mailpit. Pass
+ * `{ onCurrentPage: true }` when already on a sign-in page that carries a
+ * `next` (e.g. from an invite), so the return path is kept.
+ */
+export async function signInWithMagicLink(
+  page: Page,
+  email: string,
+  { onCurrentPage = false }: { onCurrentPage?: boolean } = {},
+) {
+  if (!onCurrentPage) await page.goto("/sign-in");
   await page.getByLabel("Email").fill(email);
-  await page.getByRole("button", { name: "Email me a sign-in link" }).click();
-  // Sending goes through Auth and SMTP; allow more than the default 5 s.
-  await expect(page.getByRole("heading", { name: "Check your email" })).toBeFocused({
-    timeout: 15_000,
-  });
+  const send = page.getByRole("button", { name: "Email me a sign-in link" });
+  await send.click();
+  // Sending goes through Auth and SMTP; allow more than the default 5 s. On a
+  // loaded local Docker stack Auth sometimes times out (504) sending the email;
+  // the form says so and a second try goes through. Sign-in has its own spec.
+  const sent = page.getByRole("heading", { name: "Check your email" });
+  const failed = page.getByText("We couldn't send your sign-in link");
+  await expect(sent.or(failed)).toBeVisible({ timeout: 20_000 });
+  if (await failed.isVisible()) await send.click();
+  await expect(sent).toBeFocused({ timeout: 20_000 });
   const link = await waitForSignInLink(email);
   await page.goto(onThisServer(link));
   return link;

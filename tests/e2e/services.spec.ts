@@ -1,56 +1,15 @@
 import { expect, type Page, test } from "@playwright/test";
-import { eq, sql } from "drizzle-orm";
 
-import * as schema from "@/server/db/schema";
-
-import { bookingValues, connectTestDb, createFixtureBusiness } from "../support/db";
-import {
-  collectConsoleErrors,
-  expectNoAxeViolations,
-  signInWithMagicLink,
-  uniqueEmail,
-} from "../support/e2e";
+import { collectConsoleErrors, expectNoAxeViolations } from "../support/e2e";
+import { liveBusinesses } from "../support/e2e-business";
 
 // Needs the local Supabase stack and DATABASE_URL (read from .env.local).
 
-const { db, close } = connectTestDb();
-const fixtures: Awaited<ReturnType<typeof createFixtureBusiness>>[] = [];
+const businesses = liveBusinesses();
+test.afterAll(() => businesses.cleanup());
 
-test.afterAll(async () => {
-  for (const fixture of fixtures) await fixture.cleanup();
-  await close();
-});
-
-/**
- * Sign up, then give the user a live business directly in the database (the
- * wizard has its own test): one staff member, "Haircut" with one booking.
- */
 async function signInWithBusiness(page: Page, role: "owner" | "staff") {
-  const email = uniqueEmail(`services-${role}`);
-  await signInWithMagicLink(page, email);
-  // Let the sign-in redirects (callback → /app → /onboarding → step 1) settle.
-  await expect(page).toHaveURL(/\/onboarding\/basics$/);
-  await expect(page.getByRole("heading", { name: "Tell us about your business" })).toBeVisible();
-
-  const fixture = await createFixtureBusiness(db);
-  fixtures.push(fixture);
-  await db
-    .update(schema.businesses)
-    .set({ onboardedAt: new Date(), setupStep: 4 })
-    .where(eq(schema.businesses.id, fixture.business.id));
-  const [user] = await db.execute<{ id: string }>(
-    sql`select id from auth.users where email = ${email}`,
-  );
-  await db
-    .insert(schema.memberships)
-    .values({ businessId: fixture.business.id, userId: user!.id, role });
-  await db.insert(schema.staffServices).values({
-    businessId: fixture.business.id,
-    staffId: fixture.staff.id,
-    serviceId: fixture.service.id,
-  });
-  await db.insert(schema.bookings).values(bookingValues(fixture, new Date("2030-05-01T01:00:00Z")));
-
+  const { fixture } = await businesses.signInWithBusiness(page, role, "services");
   await page.goto("/app/services");
   await expect(page.getByRole("heading", { level: 1, name: "Services" })).toBeVisible();
   return fixture;
