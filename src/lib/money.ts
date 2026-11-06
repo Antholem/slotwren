@@ -35,3 +35,41 @@ export function parsePriceToCents(input: string): number | null {
 export function centsToInput(cents: number): string {
   return cents % 100 === 0 ? String(cents / 100) : (cents / 100).toFixed(2);
 }
+
+/**
+ * Currencies a business can pick. Prices are integer cents, so only
+ * currencies with two decimal places (ISO 4217) are offered.
+ */
+export const CURRENCIES = [
+  "USD",
+  "EUR",
+  "GBP",
+  "CAD",
+  "AUD",
+  "NZD",
+  "CHF",
+  "SEK",
+  "NOK",
+  "DKK",
+  "PLN",
+  "CZK",
+  "SGD",
+  "HKD",
+  "PHP",
+  "MYR",
+  "THB",
+  "INR",
+  "AED",
+  "ZAR",
+  "MXN",
+  "BRL",
+] as const;
+
+export const isSupportedCurrency = (code: string) =>
+  (CURRENCIES as readonly string[]).includes(code);
+
+/** "USD · US Dollar" */
+export function currencyLabel(code: string, locale = "en-US"): string {
+  const name = new Intl.DisplayNames([locale], { type: "currency" }).of(code);
+  return name && name !== code ? `${code} · ${name}` : code;
+}

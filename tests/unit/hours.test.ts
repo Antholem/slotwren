@@ -8,15 +8,20 @@ import {
   formatDuration,
   fromAvailabilityRows,
   hoursOutsideOpening,
+  isOnGrid,
   type OpeningRange,
   openingSummary,
   openingWeek,
+  roundRangeInward,
+  roundWeekInward,
   sharedHours,
   summarizeWeek,
+  timeOf,
   timeOptions,
   toAvailabilityRows,
   WEEK_ORDER,
   weekSchema,
+  weekOnGrid,
   weekSchemaFor,
 } from "@/lib/hours";
 
@@ -324,5 +329,58 @@ describe("hoursOutsideOpening (a warning, not an error)", () => {
     expect(openingWeek(null)).toBeNull();
     expect(openingWeek([])).toBeNull();
     expect(openingSummary(openingWeek(opening)!)).toBe("Open Tue – Sun · 9:00 – 18:00");
+  });
+});
+
+describe("moving hours onto a coarser grid", () => {
+  it("timeOf and isOnGrid", () => {
+    expect(timeOf(570)).toBe("09:30");
+    expect(timeOf(0)).toBe("00:00");
+    expect(isOnGrid("09:45", 15)).toBe(true);
+    expect(isOnGrid("09:45", 30)).toBe(false);
+    expect(isOnGrid("10:00", 30)).toBe(true);
+  });
+
+  it("roundRangeInward never grows a range", () => {
+    expect(roundRangeInward({ start: "09:15", end: "17:45" }, 30)).toEqual({
+      start: "09:30",
+      end: "17:30",
+    });
+    expect(roundRangeInward({ start: "09:00", end: "17:00" }, 30)).toEqual({
+      start: "09:00",
+      end: "17:00",
+    });
+    expect(roundRangeInward({ start: "09:15", end: "10:00" }, 30)).toEqual({
+      start: "09:30",
+      end: "10:00",
+    });
+    // Too short for the grid: nothing left.
+    expect(roundRangeInward({ start: "09:15", end: "09:45" }, 30)).toBeNull();
+    expect(roundRangeInward({ start: "23:15", end: "23:45" }, 30)).toBeNull();
+  });
+
+  it("roundWeekInward rounds open days and closes emptied ones", () => {
+    const days = week({
+      1: [
+        ["09:15", "12:00"],
+        ["13:00", "17:45"],
+      ],
+      2: [["09:15", "09:45"]],
+    });
+    const rounded = roundWeekInward(days, 30);
+    expect(rounded[0]).toEqual({
+      weekday: 1,
+      open: true,
+      ranges: [
+        { start: "09:30", end: "12:00" },
+        { start: "13:00", end: "17:30" },
+      ],
+    });
+    expect(rounded[1]?.open).toBe(false);
+    expect(weekOnGrid(rounded, 30)).toBe(true);
+    expect(weekOnGrid(days, 30)).toBe(false);
+    expect(weekOnGrid(days, 15)).toBe(true);
+    // Closed days don't count.
+    expect(weekOnGrid(week({}), 30)).toBe(true);
   });
 });

@@ -24,10 +24,7 @@ export const MAX_RANGES_PER_DAY = 4;
 
 /** Every start time on a grid of `intervalMin` minutes: "00:00", "00:30", … */
 export function timeOptions(intervalMin: number): string[] {
-  return Array.from({ length: (24 * 60) / intervalMin }, (_, i) => {
-    const total = i * intervalMin;
-    return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
-  });
+  return Array.from({ length: (24 * 60) / intervalMin }, (_, i) => timeOf(i * intervalMin));
 }
 
 /** "00:00", "00:30", … "23:30" */
@@ -43,6 +40,43 @@ export const minutesOf = (time: string) => {
 
 /** "09:00" → "9:00" for prose. */
 export const prettyTime = (time: string) => time.replace(/^0(\d)/, "$1");
+
+/** 570 → "09:30" */
+export function timeOf(minutes: number): string {
+  return `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
+}
+
+export const isOnGrid = (time: string, intervalMin: number) => minutesOf(time) % intervalMin === 0;
+
+/**
+ * A range moved onto the grid without growing it: the start rounds later and
+ * the end earlier, so nobody ends up booked outside the hours they set.
+ * Null when nothing is left (09:10 – 09:50 on a 30-minute grid).
+ */
+export function roundRangeInward(range: TimeRange, intervalMin: number): TimeRange | null {
+  const start = Math.ceil(minutesOf(range.start) / intervalMin) * intervalMin;
+  const end = Math.floor(minutesOf(range.end) / intervalMin) * intervalMin;
+  return end > start ? { start: timeOf(start), end: timeOf(end) } : null;
+}
+
+/** Every range rounded inward; an open day left without hours closes. */
+export function roundWeekInward(days: DayHours[], intervalMin: number): DayHours[] {
+  return days.map((day) => {
+    if (!day.open) return day;
+    const ranges = day.ranges
+      .map((range) => roundRangeInward(range, intervalMin))
+      .filter((range): range is TimeRange => range !== null);
+    return ranges.length > 0 ? { ...day, ranges } : { ...day, open: false, ranges: day.ranges };
+  });
+}
+
+/** Whether every range of every open day sits on the grid. */
+export const weekOnGrid = (days: DayHours[], intervalMin: number) =>
+  days.every(
+    (day) =>
+      !day.open ||
+      day.ranges.every((r) => isOnGrid(r.start, intervalMin) && isOnGrid(r.end, intervalMin)),
+  );
 
 /** Mon–Fri 9:00–17:00, weekends closed. */
 export function defaultWeek(): DayHours[] {
