@@ -405,6 +405,13 @@ Phase 2: Booking engine. Tests first.
 8. One Playwright test that books a slot at a mobile viewport and checks the confirmation page.
 ```
 
+Notes for Phase 2:
+
+- [ ] TODO (deferred from step 1.9, staff time off): when adding time off that overlaps existing
+      bookings, ask the owner what to do (keep, reassign, cancel and notify). Today the time-off
+      form just says bookings already made stay as they are; the choice needs `booking/service.ts`
+      for reassigning and cancelling, and the emails for notifying.
+
 ### Phase 3 — Dashboard (week 4)
 
 ```text

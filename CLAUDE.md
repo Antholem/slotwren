@@ -161,6 +161,10 @@ These are hard rules. If a task seems to need breaking one, stop and ask.
   midnight to midnight, so DST days are 23 or 25 h. The business's opening hours live in
   `businesses.settings.openingHours` (written by onboarding): display and a soft warning
   only; bookable times come from each staff member's `availability_rules`.
+- **Changing timezone or slot grid** (Settings → Business, `server/catalog/settings.ts`):
+  hours keep their clock times, upcoming time off moves to the same local dates and times,
+  bookings never move. A coarser grid refuses off-grid staff hours unless the owner asks to
+  round them inward (`roundRangeInward`).
 - **Money.** Integer cents plus the business's `currency`. `0` displays as "Free".
 - **Tokens** (manage links, invites): random, returned once, stored SHA-256 hashed.
 - **Commits.** Small, conventional (`feat(booking): …`, `fix(db): …`, `test: …`,
