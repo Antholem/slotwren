@@ -4,6 +4,13 @@ import { refresh } from "next/cache";
 
 import type { Result } from "@/lib/result";
 import { getDashboardContext } from "@/server/auth/dashboard";
+import {
+  addTimeOff,
+  editTimeOff,
+  removeTimeOff,
+  saveStaffHours,
+  type ScheduleActor,
+} from "@/server/catalog/schedule";
 import type { Actor } from "@/server/catalog/services";
 import {
   inviteExistingStaff,
@@ -60,4 +67,34 @@ export async function resendInviteAction(inviteId: string) {
 
 export async function revokeInviteAction(inviteId: string) {
   return settle(await revokeInvite(await actor(), inviteId));
+}
+
+// ── Weekly hours and time off (owners: anyone; staff: themselves) ───────
+
+async function scheduler(): Promise<ScheduleActor> {
+  const { claims, business, role } = await getDashboardContext();
+  return {
+    claims,
+    businessId: business.id,
+    role,
+    timezone: business.timezone,
+    slotIntervalMin: business.slotIntervalMin,
+    openingHours: business.openingHours,
+  };
+}
+
+export async function saveStaffHoursAction(staffId: string, input: unknown) {
+  return settle(await saveStaffHours(await scheduler(), staffId, input));
+}
+
+export async function addTimeOffAction(staffId: string, input: unknown) {
+  return settle(await addTimeOff(await scheduler(), staffId, input));
+}
+
+export async function editTimeOffAction(timeOffId: string, input: unknown) {
+  return settle(await editTimeOff(await scheduler(), timeOffId, input));
+}
+
+export async function removeTimeOffAction(timeOffId: string) {
+  return settle(await removeTimeOff(await scheduler(), timeOffId));
 }

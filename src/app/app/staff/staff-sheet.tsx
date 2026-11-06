@@ -27,7 +27,10 @@ import { cn } from "@/lib/utils";
 import { type StaffFormInput, staffFormSchema, type StaffFormValues } from "@/lib/validation/staff";
 import type { DashboardStaff } from "@/server/db/queries/staff";
 
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+
 import { inviteExistingStaffAction, resendInviteAction, revokeInviteAction } from "./actions";
+import { HoursPanel, type ScheduleContext, TimeOffPanel } from "./schedule";
 import { hoursLabel, type ServiceOption, StaffAvatar, StatusBadge } from "./staff-view";
 
 type Props = {
@@ -39,6 +42,9 @@ type Props = {
   serverError?: string;
   services: ServiceOption[];
   canEdit: boolean;
+  context: ScheduleContext;
+  /** Which tab to open on (e.g. "hours" for your own card). */
+  initialTab?: "details" | "hours" | "time-off";
   onSave: (raw: StaffFormInput, values: StaffFormValues) => void;
 };
 
@@ -89,8 +95,45 @@ function Body(props: Props) {
           </SheetDescription>
         </div>
       </SheetHeader>
-      {canEdit ? <EditForm {...props} /> : person && <ReadOnly {...props} person={person} />}
+      {person ? <PersonTabs {...props} person={person} /> : <EditForm {...props} />}
     </>
+  );
+}
+
+/**
+ * Details, weekly hours and time off. Owners edit everything; a staff member
+ * edits only their own hours and time off.
+ */
+function PersonTabs(props: Props & { person: DashboardStaff }) {
+  const { person, canEdit, context } = props;
+  const canEditSchedule = canEdit || person.isMe;
+  const panel = "min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-6 py-6";
+  return (
+    <Tabs
+      defaultValue={props.initialTab ?? "details"}
+      className="flex min-h-0 flex-1 flex-col gap-0"
+    >
+      <TabsList variant="line" className="mx-6 mt-3 h-11 w-auto justify-start gap-4 border-b p-0">
+        <TabsTrigger value="details" className="h-11 flex-none px-1 text-label">
+          Details
+        </TabsTrigger>
+        <TabsTrigger value="hours" className="h-11 flex-none px-1 text-label">
+          Hours
+        </TabsTrigger>
+        <TabsTrigger value="time-off" className="h-11 flex-none px-1 text-label">
+          Time off
+        </TabsTrigger>
+      </TabsList>
+      <TabsContent value="details" className="flex min-h-0 flex-1 flex-col">
+        {canEdit ? <EditForm {...props} /> : <ReadOnly {...props} />}
+      </TabsContent>
+      <TabsContent value="hours" className={panel}>
+        <HoursPanel person={person} canEdit={canEditSchedule} context={context} />
+      </TabsContent>
+      <TabsContent value="time-off" className={panel}>
+        <TimeOffPanel person={person} canEdit={canEditSchedule} context={context} />
+      </TabsContent>
+    </Tabs>
   );
 }
 

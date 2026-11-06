@@ -82,7 +82,9 @@ test("invite → accept in a second browser → staff sees read-only Services", 
   await sam.goto("/app/staff");
   await expect(sam.getByText("Only owners can add people")).toBeVisible();
   await expect(sam.getByRole("button", { name: "Invite staff" })).toHaveCount(0);
-  await expect(sam.getByRole("button", { name: "View Sam" })).toContainText("Active");
+  await expect(sam.getByRole("button", { name: "Open your schedule, Sam" })).toContainText(
+    "Active",
+  );
   await expectNoAxeViolations(sam);
 
   // The link is spent

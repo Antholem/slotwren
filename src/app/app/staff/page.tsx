@@ -22,8 +22,9 @@ export default function StaffPage() {
 async function Staff() {
   await connection(); // "upcoming time off" depends on the current time
   const { claims, business, role } = await getDashboardContext();
+  const now = new Date();
   const [staff, services] = await Promise.all([
-    listStaff(claims, business.id, new Date()),
+    listStaff(claims, business.id, now),
     listServices(claims, business.id),
   ]);
 
@@ -32,6 +33,10 @@ async function Staff() {
       staff={staff}
       services={services.filter((s) => !s.archivedAt).map((s) => ({ id: s.id, name: s.name }))}
       canEdit={role === "owner"}
+      timezone={business.timezone}
+      slotIntervalMin={business.slotIntervalMin}
+      openingHours={business.openingHours}
+      now={now.toISOString()}
     />
   );
 }

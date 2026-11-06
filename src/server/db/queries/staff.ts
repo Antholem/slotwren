@@ -44,6 +44,10 @@ export type DashboardStaff = {
   serviceIds: string[];
   hours: { weekday: number; startTime: string; endTime: string }[];
   upcomingTimeOff: number;
+  /** Upcoming time off, plus the last 90 days for "Show past". */
+  timeOff: { id: string; startsAt: Date; endsAt: Date; allDay: boolean; reason: string | null }[];
+  /** This row is the signed-in member (staff may edit their own schedule). */
+  isMe: boolean;
   /** Owners only: RLS hides invites from staff. */
   invite: PendingInvite | null;
 };
@@ -83,10 +87,22 @@ export async function listStaff(
         .from(availabilityRules)
         .where(eq(availabilityRules.businessId, businessId)),
       tx
-        .select({ staffId: timeOff.staffId, n: count() })
+        .select({
+          id: timeOff.id,
+          staffId: timeOff.staffId,
+          startsAt: timeOff.startsAt,
+          endsAt: timeOff.endsAt,
+          allDay: timeOff.allDay,
+          reason: timeOff.reason,
+        })
         .from(timeOff)
-        .where(and(eq(timeOff.businessId, businessId), gt(timeOff.endsAt, now)))
-        .groupBy(timeOff.staffId),
+        .where(
+          and(
+            eq(timeOff.businessId, businessId),
+            gt(timeOff.endsAt, new Date(now.getTime() - 90 * 24 * 3_600_000)),
+          ),
+        )
+        .orderBy(asc(timeOff.startsAt)),
       tx
         .select({
           id: staffInvites.id,
@@ -112,7 +128,11 @@ export async function listStaff(
         isOwner: userId !== null && ownerIds.has(userId),
         serviceIds: assigned.filter((a) => a.staffId === person.id).map((a) => a.serviceId),
         hours: rules.filter((r) => r.staffId === person.id).map(({ staffId: _s, ...rule }) => rule),
-        upcomingTimeOff: offs.find((o) => o.staffId === person.id)?.n ?? 0,
+        upcomingTimeOff: offs.filter((o) => o.staffId === person.id && o.endsAt > now).length,
+        timeOff: offs
+          .filter((o) => o.staffId === person.id)
+          .map(({ staffId: _s, ...entry }) => entry),
+        isMe: userId === claims.sub,
         invite: invite
           ? {
               id: invite.id,

@@ -1,6 +1,8 @@
 import "server-only";
 
-import { and, asc, eq, isNotNull } from "drizzle-orm";
+import { and, asc, eq, isNotNull, sql } from "drizzle-orm";
+
+import type { OpeningRange } from "@/lib/hours";
 
 import { type RlsClaims, withRls } from "../client";
 import { availabilityRules, businesses, memberships } from "../schema";
@@ -14,6 +16,8 @@ export type MemberBusiness = {
   timezone: string;
   currency: string;
   slotIntervalMin: number;
+  /** settings.openingHours; null if the business never set them. */
+  openingHours: OpeningRange[] | null;
   role: "owner" | "staff";
 };
 
@@ -30,6 +34,7 @@ export async function listMemberBusinesses(claims: RlsClaims): Promise<MemberBus
         timezone: businesses.timezone,
         currency: businesses.currency,
         slotIntervalMin: businesses.slotIntervalMin,
+        openingHours: sql<OpeningRange[] | null>`${businesses.settings} -> 'openingHours'`,
         role: memberships.role,
       })
       .from(memberships)

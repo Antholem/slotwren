@@ -1,23 +1,34 @@
 "use client";
 
 import { Plus, UserPlus, Users } from "lucide-react";
-import { useOptimistic, useState, useTransition } from "react";
+import { useMemo, useOptimistic, useState, useTransition } from "react";
 import { toast } from "sonner";
 
 import { PageBody, PageHeader } from "@/components/dashboard/page-header";
 import { Button } from "@/components/ui/button";
-import { fromAvailabilityRows, weeklyHoursLabel } from "@/lib/hours";
+import { fromAvailabilityRows, type OpeningRange, weeklyHoursLabel } from "@/lib/hours";
+import { timeOffLabel } from "@/lib/time-off";
 import { cn } from "@/lib/utils";
 import type { StaffFormInput, StaffFormValues } from "@/lib/validation/staff";
 import type { DashboardStaff } from "@/server/db/queries/staff";
 
 import { saveStaffAction } from "./actions";
 import { InviteDialog } from "./invite-dialog";
+import type { ScheduleContext } from "./schedule";
 import { StaffSheet } from "./staff-sheet";
 
 export type ServiceOption = { id: string; name: string };
 
-type Props = { staff: DashboardStaff[]; services: ServiceOption[]; canEdit: boolean };
+type Props = {
+  staff: DashboardStaff[];
+  services: ServiceOption[];
+  canEdit: boolean;
+  timezone: string;
+  slotIntervalMin: number;
+  openingHours: OpeningRange[] | null;
+  /** Request time from the server (ISO), so "upcoming" is stable across renders. */
+  now: string;
+};
 type Row = DashboardStaff & { pending?: boolean };
 
 const EDGE = {
@@ -34,7 +45,16 @@ const AVATAR = {
 type SheetState =
   { open: false } | { open: true; staffId: string | null; draft?: StaffFormInput; error?: string };
 
-export function StaffView({ staff, services, canEdit }: Props) {
+export function StaffView({ staff, services, canEdit, ...schedule }: Props) {
+  const context: ScheduleContext = useMemo(
+    () => ({
+      timezone: schedule.timezone,
+      slotIntervalMin: schedule.slotIntervalMin,
+      openingHours: schedule.openingHours,
+      now: new Date(schedule.now),
+    }),
+    [schedule.timezone, schedule.slotIntervalMin, schedule.openingHours, schedule.now],
+  );
   const [people, upsert] = useOptimistic<Row[], Row>(staff, (list, row) =>
     list.some((p) => p.id === row.id)
       ? list.map((p) => (p.id === row.id ? row : p))
@@ -60,6 +80,8 @@ export function StaffView({ staff, services, canEdit }: Props) {
         isOwner: previous?.isOwner ?? false,
         hours: previous?.hours ?? [],
         upcomingTimeOff: previous?.upcomingTimeOff ?? 0,
+        timeOff: previous?.timeOff ?? [],
+        isMe: previous?.isMe ?? false,
         invite: previous?.invite ?? null,
         ...values,
         pending: true,
@@ -126,6 +148,7 @@ export function StaffView({ staff, services, canEdit }: Props) {
               <StaffCard
                 person={person}
                 canEdit={canEdit}
+                context={context}
                 onOpen={() => setSheet({ open: true, staffId: person.id })}
               />
             </li>
@@ -141,6 +164,7 @@ export function StaffView({ staff, services, canEdit }: Props) {
         serverError={sheet.open ? sheet.error : undefined}
         services={services}
         canEdit={canEdit}
+        context={context}
         onSave={save}
       />
       {canEdit && <InviteDialog open={inviting} onOpenChange={setInviting} services={services} />}
@@ -197,12 +221,15 @@ export const hoursLabel = (person: DashboardStaff) =>
 function StaffCard({
   person,
   canEdit,
+  context,
   onOpen,
 }: {
   person: Row;
   canEdit: boolean;
+  context: ScheduleContext;
   onOpen: () => void;
 }) {
+  const nextOff = person.timeOff.find((t) => t.endsAt > context.now);
   const services = person.serviceIds.length;
   const extras = [
     `${services} ${services === 1 ? "service" : "services"}`,
@@ -215,7 +242,7 @@ function StaffCard({
       onClick={onOpen}
       disabled={person.pending}
       aria-haspopup="dialog"
-      aria-label={`${canEdit ? "Edit" : "View"} ${person.name}`}
+      aria-label={`${canEdit ? "Edit" : person.isMe ? "Open your schedule," : "View"} ${person.name}`}
       className={cn(
         "flex h-full w-full flex-col gap-4 rounded-xl border border-l-4 bg-card p-5 text-left hover:bg-muted/40 focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none",
         EDGE[person.color],
@@ -239,6 +266,12 @@ function StaffCard({
           {hoursLabel(person)}
         </span>
         <span className="text-body-sm text-muted-foreground">{extras.join(" · ")}</span>
+        {nextOff && (
+          <span className="text-body-sm">
+            Next time off:{" "}
+            <span className="font-medium">{timeOffLabel(nextOff, context.timezone)}</span>
+          </span>
+        )}
         {person.invite && (
           <span className="truncate text-body-sm text-info-text">
             Invite sent to {person.invite.email}
