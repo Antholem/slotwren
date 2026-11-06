@@ -43,6 +43,20 @@
       "when": 1793705415571,
       "tag": "20261103113015_onboarding",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1793971299359,
+      "tag": "20261106132139_staff_invite_tracking",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1793971312905,
+      "tag": "20261106132152_accept_staff_invite",
+      "breakpoints": true
     }
   ]
 }

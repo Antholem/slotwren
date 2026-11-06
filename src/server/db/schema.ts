@@ -201,6 +201,11 @@ export const staffInvites = pgTable(
     invitedBy: uuid("invited_by").references(() => authUsers.id, { onDelete: "set null" }),
     expiresAt: tstz("expires_at").notNull(),
     acceptedAt: tstz("accepted_at"),
+    // Rotated with the token on resend.
+    sentAt: tstz("sent_at").defaultNow().notNull(),
+    // The invite created its staff row (vs inviting an existing one): revoking it
+    // removes that placeholder too, unless it has bookings.
+    createdStaff: boolean("created_staff").notNull().default(false),
     createdAt: createdAt(),
   },
   (t) => [

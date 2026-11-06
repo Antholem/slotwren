@@ -1,0 +1,2 @@
+ALTER TABLE "staff_invites" ADD COLUMN "sent_at" timestamp with time zone DEFAULT now() NOT NULL;--> statement-breakpoint
+ALTER TABLE "staff_invites" ADD COLUMN "created_staff" boolean DEFAULT false NOT NULL;
