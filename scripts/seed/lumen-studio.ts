@@ -22,6 +22,8 @@ export const BUSINESS = {
   settings: {
     embed: { buttonText: "Book now", position: "bottom-right", showChat: true },
     notifications: { ownerNewBookingEmail: true },
+    // Studio hours (Staff mockup: "Inside studio hours: Tue – Sun, 09:00 – 18:00").
+    openingHours: [2, 3, 4, 5, 6, 0].map((weekday) => ({ weekday, start: "09:00", end: "18:00" })),
   },
 } as const;
 

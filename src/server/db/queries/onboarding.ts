@@ -316,6 +316,17 @@ export async function saveHours(
         .values(rows.map((row) => ({ ...row, businessId, staffId: ownerStaff.id })));
     }
 
+    // "When are you open?" is also the business's opening hours.
+    const openingHours = rows.map((row) => ({
+      weekday: row.weekday,
+      start: row.startTime,
+      end: row.endTime,
+    }));
+    await tx
+      .update(businesses)
+      .set({ settings: sql`${businesses.settings} || ${JSON.stringify({ openingHours })}::jsonb` })
+      .where(eq(businesses.id, businessId));
+
     if (!goLive) return;
     await tx
       .update(businesses)

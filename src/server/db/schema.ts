@@ -97,6 +97,12 @@ export type BusinessSettings = {
     showChat: boolean;
   };
   notifications?: { ownerNewBookingEmail: boolean };
+  /**
+   * When the business is open, local "HH:MM" in its timezone ("When are you
+   * open?" in onboarding). Display and a soft check on staff hours only: the
+   * slot engine uses each staff member's availability_rules.
+   */
+  openingHours?: { weekday: number; start: string; end: string }[];
 };
 
 // ── tenant root ─────────────────────────────────────────────────────────
