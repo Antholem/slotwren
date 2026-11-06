@@ -77,7 +77,7 @@ src/
     booking/ dashboard/ chat/ settings/ marketing/ shared/
   emails/                React Email templates
   hooks/                 client hooks (Realtime, media queries)
-  lib/                   client-safe pure helpers: result.ts, money, dates, utils
+  lib/                   client-safe pure helpers: result.ts, money, dates, hours, time-off, utils
   server/                server-only (`import "server-only"`)
     db/schema.ts         Drizzle schema
     db/client.ts         withRls() (and the raw adminDb, used only by db/admin.ts)
@@ -155,6 +155,12 @@ These are hard rules. If a task seems to need breaking one, stop and ask.
 - **Time.** Persist instants as UTC `timestamptz`. Convert at the edges with
   `@date-fns/tz` (`TZDate`). Working hours are local wall-clock `time` in the business
   timezone. Show customers their own timezone and note the business's.
+- **Hours and time off.** Weekly hours: `src/lib/hours.ts` (`weekSchemaFor` on the slot
+  grid) edited with `components/shared/week-editor.tsx` (onboarding and the staff sheet).
+  Time off: `src/lib/time-off.ts` converts business-local dates to instants; all-day runs
+  midnight to midnight, so DST days are 23 or 25 h. The business's opening hours live in
+  `businesses.settings.openingHours` (written by onboarding): display and a soft warning
+  only; bookable times come from each staff member's `availability_rules`.
 - **Money.** Integer cents plus the business's `currency`. `0` displays as "Free".
 - **Tokens** (manage links, invites): random, returned once, stored SHA-256 hashed.
 - **Commits.** Small, conventional (`feat(booking): …`, `fix(db): …`, `test: …`,
