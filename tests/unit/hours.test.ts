@@ -1,16 +1,23 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  dayMinutes,
   type DayHours,
   defaultWeek,
   describeOpenDays,
+  formatDuration,
   fromAvailabilityRows,
+  hoursOutsideOpening,
+  type OpeningRange,
   openingSummary,
+  openingWeek,
   sharedHours,
   summarizeWeek,
+  timeOptions,
   toAvailabilityRows,
   WEEK_ORDER,
   weekSchema,
+  weekSchemaFor,
 } from "@/lib/hours";
 
 /** A week from "weekday: ranges" pairs; days not listed are closed. */
@@ -74,7 +81,7 @@ describe("weekSchema", () => {
       }),
       "overlap",
     ],
-    ["an open day without hours", week({ 1: [] }), "Add opening hours for Monday"],
+    ["an open day without hours", week({ 1: [] }), "Add hours for Monday or mark it closed"],
     ["off the half hour", week({ 1: [["09:15", "17:00"]] }), "hour or half hour"],
   ])("rejects %s", (_case, days, message) => {
     const result = weekSchema.safeParse(days);
@@ -179,5 +186,143 @@ describe("availability rows", () => {
 
   it("an empty schedule becomes the default week", () => {
     expect(fromAvailabilityRows([])).toEqual(defaultWeek());
+  });
+});
+
+describe("timeOptions", () => {
+  it("covers the day on the business's grid", () => {
+    const half = timeOptions(30);
+    expect(half).toHaveLength(48);
+    expect(half.slice(0, 3)).toEqual(["00:00", "00:30", "01:00"]);
+    expect(half.at(-1)).toBe("23:30");
+    const quarter = timeOptions(15);
+    expect(quarter).toHaveLength(96);
+    expect(quarter.slice(0, 3)).toEqual(["00:00", "00:15", "00:30"]);
+  });
+});
+
+describe("weekSchemaFor (staff hours)", () => {
+  const staffWeek = weekSchemaFor({ intervalMin: 30, requireOpenDay: false });
+
+  it("lets a staff member be off all week", () => {
+    expect(staffWeek.safeParse(week({})).success).toBe(true);
+    expect(weekSchema.safeParse(week({})).success).toBe(false);
+  });
+
+  it("follows the business's slot interval", () => {
+    const quarterPast = week({ 2: [["09:15", "17:45"]] });
+    expect(staffWeek.safeParse(quarterPast).success).toBe(false);
+    expect(weekSchemaFor({ intervalMin: 15 }).safeParse(quarterPast).success).toBe(true);
+    // Off a 15-minute grid too.
+    expect(
+      weekSchemaFor({ intervalMin: 15 }).safeParse(week({ 2: [["09:10", "17:00"]] })).success,
+    ).toBe(false);
+  });
+
+  it("puts errors on the day that has them", () => {
+    const result = staffWeek.safeParse(
+      week({
+        3: [
+          ["09:00", "13:00"],
+          ["12:30", "18:00"],
+        ],
+      }),
+    );
+    expect(result.success).toBe(false);
+    // Wednesday is index 2 (Monday first).
+    expect(result.error?.issues[0]).toMatchObject({
+      path: [2, "ranges"],
+      message: "Wednesday's hours overlap.",
+    });
+  });
+
+  it("caps the ranges in a day", () => {
+    const many = week({
+      1: [
+        ["08:00", "09:00"],
+        ["10:00", "11:00"],
+        ["12:00", "13:00"],
+        ["14:00", "15:00"],
+        ["16:00", "17:00"],
+      ],
+    });
+    expect(staffWeek.safeParse(many).success).toBe(false);
+  });
+});
+
+describe("day totals", () => {
+  it("dayMinutes adds the ranges of open days", () => {
+    expect(
+      dayMinutes({
+        weekday: 1,
+        open: true,
+        ranges: [
+          { start: "09:00", end: "12:00" },
+          { start: "13:00", end: "17:30" },
+        ],
+      }),
+    ).toBe(450);
+    expect(
+      dayMinutes({ weekday: 1, open: false, ranges: [{ start: "09:00", end: "17:00" }] }),
+    ).toBe(0);
+  });
+
+  it("formatDuration", () => {
+    expect(formatDuration(540)).toBe("9 h");
+    expect(formatDuration(270)).toBe("4 h 30 min");
+    expect(formatDuration(30)).toBe("30 min");
+    expect(formatDuration(0)).toBe("–");
+  });
+});
+
+describe("hoursOutsideOpening (a warning, not an error)", () => {
+  const opening: OpeningRange[] = [2, 3, 4, 5, 6, 0].map((weekday) => ({
+    weekday,
+    start: "09:00",
+    end: "18:00",
+  }));
+
+  it("is quiet when hours sit inside opening hours", () => {
+    expect(hoursOutsideOpening(tueToSun, opening)).toEqual([]);
+    expect(hoursOutsideOpening(week({ 2: [["10:00", "14:00"]] }), opening)).toEqual([]);
+  });
+
+  it("flags a day the business is closed", () => {
+    expect(hoursOutsideOpening(week({ 1: nineToSix }), opening)).toEqual([
+      "Monday: the business is closed that day.",
+    ]);
+  });
+
+  it("flags hours that start early or end late", () => {
+    expect(
+      hoursOutsideOpening(week({ 2: [["08:30", "17:00"]], 3: [["12:00", "19:00"]] }), opening),
+    ).toEqual([
+      "Tuesday: outside opening hours (09:00 – 18:00).",
+      "Wednesday: outside opening hours (09:00 – 18:00).",
+    ]);
+  });
+
+  it("handles split opening hours", () => {
+    const split: OpeningRange[] = [
+      { weekday: 2, start: "09:00", end: "12:00" },
+      { weekday: 2, start: "13:00", end: "18:00" },
+    ];
+    expect(hoursOutsideOpening(week({ 2: [["13:00", "17:00"]] }), split)).toEqual([]);
+    // Over lunch, when the business is closed.
+    expect(hoursOutsideOpening(week({ 2: [["11:00", "14:00"]] }), split)).toEqual([
+      "Tuesday: outside opening hours (09:00 – 12:00, 13:00 – 18:00).",
+    ]);
+    // Back-to-back opening ranges count as continuous.
+    const touching: OpeningRange[] = [
+      { weekday: 2, start: "09:00", end: "12:00" },
+      { weekday: 2, start: "12:00", end: "18:00" },
+    ];
+    expect(hoursOutsideOpening(week({ 2: [["10:00", "15:00"]] }), touching)).toEqual([]);
+  });
+
+  it("openingWeek turns opening hours into editor days", () => {
+    expect(openingWeek(null)).toBeNull();
+    expect(openingWeek([])).toBeNull();
+    expect(openingSummary(openingWeek(opening)!)).toBe("Open Tue – Sun · 9:00 – 18:00");
   });
 });

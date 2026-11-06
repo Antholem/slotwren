@@ -1,9 +1,9 @@
 import { z } from "zod";
 
 /*
- * Weekly working hours as edited in onboarding (and later the staff hours
- * editor). Times are local wall-clock "HH:MM" in the business timezone, on the
- * half hour. Weekdays use JS getDay numbering: 0 = Sunday … 6 = Saturday.
+ * Weekly hours as edited in onboarding and the staff hours editor. Times are
+ * local wall-clock "HH:MM" in the business timezone, on the business's slot
+ * grid (15 or 30 min). Weekdays use JS getDay numbering: 0 = Sunday … 6 = Saturday.
  */
 
 export const WEEKDAY_NAMES = [
@@ -22,11 +22,16 @@ export const WEEK_ORDER = [1, 2, 3, 4, 5, 6, 0] as const;
 
 export const MAX_RANGES_PER_DAY = 4;
 
+/** Every start time on a grid of `intervalMin` minutes: "00:00", "00:30", … */
+export function timeOptions(intervalMin: number): string[] {
+  return Array.from({ length: (24 * 60) / intervalMin }, (_, i) => {
+    const total = i * intervalMin;
+    return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
+  });
+}
+
 /** "00:00", "00:30", … "23:30" */
-export const HALF_HOURS: string[] = Array.from({ length: 48 }, (_, i) => {
-  const h = String(Math.floor(i / 2)).padStart(2, "0");
-  return `${h}:${i % 2 ? "30" : "00"}`;
-});
+export const HALF_HOURS: string[] = timeOptions(30);
 
 export type TimeRange = { start: string; end: string };
 export type DayHours = { weekday: number; open: boolean; ranges: TimeRange[] };
@@ -48,60 +53,134 @@ export function defaultWeek(): DayHours[] {
   }));
 }
 
-const timeSchema = z
-  .string()
-  .refine((t) => HALF_HOURS.includes(t), "Pick a time on the hour or half hour.");
+const gridMessage = (intervalMin: number) =>
+  intervalMin === 30
+    ? "Pick a time on the hour or half hour."
+    : `Pick a time on the ${intervalMin}-minute grid.`;
 
-const daySchema = z.object({
-  weekday: z.number().int().min(0).max(6),
-  open: z.boolean(),
-  ranges: z
-    .array(z.object({ start: timeSchema, end: timeSchema }))
-    .max(MAX_RANGES_PER_DAY, `Up to ${MAX_RANGES_PER_DAY} ranges a day.`),
-});
+/**
+ * A week of hours on the business's slot grid: each weekday once, every
+ * range ending after it starts, no overlaps within a day. Businesses need at
+ * least one open day (`requireOpenDay`); a staff member may be off all week.
+ */
+export function weekSchemaFor({
+  intervalMin = 30,
+  requireOpenDay = true,
+}: { intervalMin?: number; requireOpenDay?: boolean } = {}) {
+  const options = new Set(timeOptions(intervalMin));
+  const timeSchema = z.string().refine((t) => options.has(t), gridMessage(intervalMin));
+  const daySchema = z.object({
+    weekday: z.number().int().min(0).max(6),
+    open: z.boolean(),
+    ranges: z
+      .array(z.object({ start: timeSchema, end: timeSchema }))
+      .max(MAX_RANGES_PER_DAY, `Up to ${MAX_RANGES_PER_DAY} ranges a day.`),
+  });
 
-export const weekSchema = z
-  .array(daySchema)
-  .length(7)
-  .superRefine((days, ctx) => {
-    if (new Set(days.map((d) => d.weekday)).size !== 7) {
-      ctx.addIssue({ code: "custom", message: "Each weekday must appear once." });
-      return;
-    }
-    if (!days.some((d) => d.open)) {
-      ctx.addIssue({ code: "custom", message: "Open at least one day so customers can book." });
-    }
-    days.forEach((day, dayIndex) => {
-      if (!day.open) return;
-      if (day.ranges.length === 0) {
-        ctx.addIssue({
-          code: "custom",
-          path: [dayIndex, "ranges"],
-          message: `Add opening hours for ${WEEKDAY_NAMES[day.weekday]} or mark it closed.`,
-        });
+  return z
+    .array(daySchema)
+    .length(7)
+    .superRefine((days, ctx) => {
+      if (new Set(days.map((d) => d.weekday)).size !== 7) {
+        ctx.addIssue({ code: "custom", message: "Each weekday must appear once." });
+        return;
       }
-      day.ranges.forEach((range, rangeIndex) => {
-        if (minutesOf(range.end) <= minutesOf(range.start)) {
-          ctx.addIssue({
-            code: "custom",
-            path: [dayIndex, "ranges", rangeIndex, "end"],
-            message: "End after it starts.",
-          });
-        }
-      });
-      const sorted = [...day.ranges].sort((a, b) => minutesOf(a.start) - minutesOf(b.start));
-      for (let i = 1; i < sorted.length; i++) {
-        if (minutesOf(sorted[i]!.start) < minutesOf(sorted[i - 1]!.end)) {
+      if (requireOpenDay && !days.some((d) => d.open)) {
+        ctx.addIssue({ code: "custom", message: "Open at least one day so customers can book." });
+      }
+      days.forEach((day, dayIndex) => {
+        if (!day.open) return;
+        if (day.ranges.length === 0) {
           ctx.addIssue({
             code: "custom",
             path: [dayIndex, "ranges"],
-            message: `${WEEKDAY_NAMES[day.weekday]}'s hours overlap.`,
+            message: `Add hours for ${WEEKDAY_NAMES[day.weekday]} or mark it closed.`,
           });
-          break;
         }
-      }
+        day.ranges.forEach((range, rangeIndex) => {
+          if (minutesOf(range.end) <= minutesOf(range.start)) {
+            ctx.addIssue({
+              code: "custom",
+              path: [dayIndex, "ranges", rangeIndex, "end"],
+              message: "End after it starts.",
+            });
+          }
+        });
+        const sorted = [...day.ranges].sort((a, b) => minutesOf(a.start) - minutesOf(b.start));
+        for (let i = 1; i < sorted.length; i++) {
+          if (minutesOf(sorted[i]!.start) < minutesOf(sorted[i - 1]!.end)) {
+            ctx.addIssue({
+              code: "custom",
+              path: [dayIndex, "ranges"],
+              message: `${WEEKDAY_NAMES[day.weekday]}'s hours overlap.`,
+            });
+            break;
+          }
+        }
+      });
     });
-  });
+}
+
+/** Onboarding's "When are you open?": half-hour grid, at least one open day. */
+export const weekSchema = weekSchemaFor();
+
+/** Minutes a day's ranges add up to (closed days count 0). */
+export function dayMinutes(day: DayHours): number {
+  if (!day.open) return 0;
+  return day.ranges.reduce((sum, r) => sum + Math.max(0, minutesOf(r.end) - minutesOf(r.start)), 0);
+}
+
+/** "9 h", "4 h 30 min", "–" */
+export function formatDuration(minutes: number): string {
+  if (minutes <= 0) return "–";
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return [h ? `${h} h` : null, m ? `${m} min` : null].filter(Boolean).join(" ");
+}
+
+export type OpeningRange = { weekday: number; start: string; end: string };
+
+/**
+ * Staff hours that fall outside the business's opening hours: a soft check,
+ * shown as a warning (people do prep before opening). One message per day.
+ */
+export function hoursOutsideOpening(days: DayHours[], opening: OpeningRange[]): string[] {
+  const warnings: string[] = [];
+  for (const weekday of WEEK_ORDER) {
+    const day = days.find((d) => d.weekday === weekday);
+    if (!day?.open || day.ranges.length === 0) continue;
+    const open = opening.filter((o) => o.weekday === weekday);
+    const name = WEEKDAY_NAMES[weekday];
+    if (open.length === 0) {
+      warnings.push(`${name}: the business is closed that day.`);
+      continue;
+    }
+    // Every minute of every staff range must sit inside some opening range.
+    const outside = day.ranges.some((range) => {
+      let cursor = minutesOf(range.start);
+      const end = minutesOf(range.end);
+      const sorted = [...open].sort((a, b) => minutesOf(a.start) - minutesOf(b.start));
+      for (const o of sorted) {
+        if (minutesOf(o.start) <= cursor && minutesOf(o.end) > cursor) cursor = minutesOf(o.end);
+        if (cursor >= end) return false;
+      }
+      return cursor < end;
+    });
+    if (outside) {
+      const hours = open.map((o) => `${o.start} – ${o.end}`).join(", ");
+      warnings.push(`${name}: outside opening hours (${hours}).`);
+    }
+  }
+  return warnings;
+}
+
+/** Opening ranges as editor days, or null when the business hasn't set any. */
+export function openingWeek(opening: OpeningRange[] | null | undefined): DayHours[] | null {
+  if (!opening || opening.length === 0) return null;
+  return fromAvailabilityRows(
+    opening.map((o) => ({ weekday: o.weekday, startTime: o.start, endTime: o.end })),
+  );
+}
 
 /** "6 days open. Mondays closed." */
 export function summarizeWeek(days: DayHours[]): string {
@@ -145,13 +224,17 @@ export function describeOpenDays(days: DayHours[]): string {
     .join(", ");
 }
 
-/** "9:00 – 18:00" when every open day shares the same hours, else null. */
-export function sharedHours(days: DayHours[]): string | null {
+/**
+ * "9:00 – 18:00" when every open day shares the same hours, else null.
+ * `padded` keeps "09:00" for monospaced, tabular places.
+ */
+export function sharedHours(days: DayHours[], { padded = false } = {}): string | null {
   const open = days.filter((d) => d.open && d.ranges.length > 0);
   if (open.length === 0) return null;
   const key = (d: DayHours) => d.ranges.map((r) => `${r.start}-${r.end}`).join(",");
   if (!open.every((d) => key(d) === key(open[0]!))) return null;
-  return open[0]!.ranges.map((r) => `${prettyTime(r.start)} – ${prettyTime(r.end)}`).join(", ");
+  const time = padded ? (t: string) => t : prettyTime;
+  return open[0]!.ranges.map((r) => `${time(r.start)} – ${time(r.end)}`).join(", ");
 }
 
 /** Flatten to availability_rules rows. */
