@@ -4,11 +4,11 @@ import type { Route } from "next";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 
-import { env } from "@/env";
 import { err, ok, type Result } from "@/lib/result";
 import { slugSchema } from "@/lib/slug";
 import { basicsSchema, brandSchema, hoursSchema, serviceSchema } from "@/lib/validation/onboarding";
 import { requireUser, rlsClaimsFor } from "@/server/auth/session";
+import { isOwnLogoUrl, removeUnusedLogos } from "@/server/catalog/logo";
 import { isUniqueViolation } from "@/server/db/errors";
 import {
   getSetupState,
@@ -18,7 +18,6 @@ import {
   saveFirstService,
   saveHours,
 } from "@/server/db/queries/onboarding";
-import { createSupabaseServerClient } from "@/server/supabase/server";
 
 /*
  * One action per wizard step. Each re-validates its input with the step's Zod
@@ -110,44 +109,13 @@ export async function saveBrandAction(input: unknown, rawIntent: unknown): Promi
   const parsed = brandSchema.safeParse(input);
   if (!parsed.success) return invalid(parsed.error);
 
-  // Only logos uploaded to this business's folder in our bucket.
-  const allowedPrefix = new URL(
-    `/storage/v1/object/public/logos/${business.id}/`,
-    env.NEXT_PUBLIC_SUPABASE_URL,
-  ).toString();
-  if (parsed.data.logoUrl && !parsed.data.logoUrl.startsWith(allowedPrefix)) {
+  if (parsed.data.logoUrl && !isOwnLogoUrl(business.id, parsed.data.logoUrl)) {
     return err("invalid_input", "Upload the logo again.", { logoUrl: ["Upload the logo again."] });
   }
 
   await saveBrand(claims, business.id, parsed.data);
   await removeUnusedLogos(business.id, parsed.data.logoUrl);
   return proceed(intent, "/onboarding/service");
-}
-
-/**
- * Delete earlier uploads (replaced or removed logos) from the business's
- * folder, as the owner so Storage RLS applies. Best effort: a leftover file
- * costs a few KB, so failures are logged, not shown.
- */
-async function removeUnusedLogos(businessId: string, keepUrl: string | null) {
-  const supabase = await createSupabaseServerClient();
-  const bucket = supabase.storage.from("logos");
-  const { data: files, error } = await bucket.list(businessId);
-  if (error) {
-    console.error("Listing logos failed", { businessId, message: error.message });
-    return;
-  }
-  const keep = keepUrl
-    ? decodeURIComponent(new URL(keepUrl).pathname.split("/").pop() ?? "")
-    : null;
-  const stale = files
-    .filter((file) => file.name !== keep)
-    .map((file) => `${businessId}/${file.name}`);
-  if (stale.length === 0) return;
-  const { error: removeError } = await bucket.remove(stale);
-  if (removeError) {
-    console.error("Removing old logos failed", { businessId, message: removeError.message });
-  }
 }
 
 // ── Step 3 ──────────────────────────────────────────────────────────────

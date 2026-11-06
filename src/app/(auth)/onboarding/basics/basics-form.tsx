@@ -1,7 +1,7 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { CircleAlert, CircleCheck, Link2, Loader2 } from "lucide-react";
+import { Link2 } from "lucide-react";
 import { useEffect, useId, useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
 
@@ -9,11 +9,11 @@ import { BookingPreview, type PreviewProps } from "@/components/onboarding/booki
 import { FieldError, StepFooter } from "@/components/onboarding/step-footer";
 import { STEP_FORM_ID, StepShell } from "@/components/onboarding/step-shell";
 import { NativeSelect } from "@/components/shared/native-select";
+import { SlugField, useSlugStatus } from "@/components/shared/slug-field";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { slugify, slugSchema } from "@/lib/slug";
+import { slugify } from "@/lib/slug";
 import { timeZoneLabel } from "@/lib/timezones";
-import { cn } from "@/lib/utils";
 import { type BasicsInput, basicsSchema } from "@/lib/validation/onboarding";
 
 import { checkSlug, saveBasicsAction } from "../actions";
@@ -24,13 +24,6 @@ type Props = {
   initial: BasicsInput | null;
   preview: PreviewProps;
 };
-
-type SlugStatus =
-  | { state: "idle" }
-  | { state: "checking" }
-  | { state: "available" }
-  | { state: "taken" }
-  | { state: "invalid"; message: string };
 
 export function BasicsForm({ timeZones, initial, preview }: Props) {
   const form = useForm<BasicsInput>({
@@ -64,7 +57,7 @@ export function BasicsForm({ timeZones, initial, preview }: Props) {
       ? [{ value: detected, label: timeZoneLabel(detected) }, ...timeZones]
       : timeZones;
 
-  const slugStatus = useSlugStatus(slug);
+  const slugStatus = useSlugStatus(slug, checkSlug);
   const ids = {
     name: useId(),
     nameError: useId(),
@@ -110,36 +103,14 @@ export function BasicsForm({ timeZones, initial, preview }: Props) {
           <Label htmlFor={ids.slug} className="text-label">
             Booking link
           </Label>
-          <div
-            className={cn(
-              "flex h-11 items-center rounded-lg border border-input px-3 focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50 dark:bg-input/30",
-              slugError && "border-destructive ring-3 ring-destructive/20",
-            )}
-          >
-            <span aria-hidden className="shrink-0 font-mono text-mono text-muted-foreground">
-              {preview.host}/b/
-            </span>
-            <input
-              id={ids.slug}
-              autoCapitalize="none"
-              autoCorrect="off"
-              spellCheck={false}
-              aria-invalid={!!slugError || undefined}
-              aria-describedby={ids.slugStatus}
-              className="h-full min-w-0 flex-1 bg-transparent font-mono text-mono outline-none"
-              {...slugField}
-            />
-          </div>
-          <div id={ids.slugStatus} aria-live="polite" className="min-h-5 text-body-sm">
-            {slugError ? (
-              <span className="flex items-center gap-1.5 text-danger-text">
-                <CircleAlert aria-hidden className="size-4" />
-                {slugError}
-              </span>
-            ) : (
-              <SlugStatusLine status={slugStatus} />
-            )}
-          </div>
+          <SlugField
+            id={ids.slug}
+            statusId={ids.slugStatus}
+            host={preview.host}
+            status={slugStatus}
+            error={slugError}
+            inputProps={slugField}
+          />
           {slug && (
             <p className="flex items-start gap-3 rounded-lg bg-muted px-4 py-3 text-body-sm">
               <Link2 aria-hidden className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
@@ -193,66 +164,4 @@ export function BasicsForm({ timeZones, initial, preview }: Props) {
       </form>
     </StepShell>
   );
-}
-
-function SlugStatusLine({ status }: { status: SlugStatus }) {
-  switch (status.state) {
-    case "checking":
-      return (
-        <span className="flex items-center gap-1.5 text-muted-foreground">
-          <Loader2 aria-hidden className="size-4 animate-spin" />
-          Checking…
-        </span>
-      );
-    case "available":
-      return (
-        <span className="flex items-center gap-1.5 text-success-text">
-          <CircleCheck aria-hidden className="size-4" />
-          Available
-        </span>
-      );
-    case "taken":
-      return (
-        <span className="flex items-center gap-1.5 text-danger-text">
-          <CircleAlert aria-hidden className="size-4" />
-          Taken. Try adding your area or a number.
-        </span>
-      );
-    case "invalid":
-      return <span className="text-muted-foreground">{status.message}</span>;
-    default:
-      return null;
-  }
-}
-
-/** Debounced availability check for the slug as the owner types. */
-function useSlugStatus(slug: string): SlugStatus {
-  const [status, setStatus] = useState<SlugStatus>({ state: "idle" });
-
-  useEffect(() => {
-    if (!slug) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- reset when the field empties
-      setStatus({ state: "idle" });
-      return;
-    }
-    const parsed = slugSchema.safeParse(slug);
-    if (!parsed.success) {
-      setStatus({ state: "invalid", message: parsed.error.issues[0]!.message });
-      return;
-    }
-    let cancelled = false;
-    setStatus({ state: "checking" });
-    const timer = setTimeout(async () => {
-      const result = await checkSlug(parsed.data);
-      if (cancelled) return;
-      if (!result.ok) setStatus({ state: "invalid", message: result.error.message });
-      else setStatus({ state: result.data.available ? "available" : "taken" });
-    }, 350);
-    return () => {
-      cancelled = true;
-      clearTimeout(timer);
-    };
-  }, [slug]);
-
-  return status;
 }
