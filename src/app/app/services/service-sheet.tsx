@@ -89,7 +89,7 @@ export function ServiceSheet(props: Props) {
         side={desktop ? "right" : "bottom"}
         // Sizes are variant-prefixed to beat SheetContent's own data-[side=…] ones.
         className={cn(
-          "gap-0 p-0",
+          "gap-0 overflow-x-hidden p-0",
           desktop
             ? "data-[side=right]:w-full data-[side=right]:sm:max-w-lg"
             : "rounded-t-2xl data-[side=bottom]:h-[92dvh]",
@@ -153,7 +153,7 @@ function ReadOnly({
   ];
   return (
     <>
-      <div className="flex flex-1 flex-col gap-5 overflow-y-auto px-6 py-6">
+      <div className="flex flex-1 flex-col gap-5 overflow-x-hidden overflow-y-auto px-6 py-6">
         <dl className="flex flex-col gap-5">
           {rows.map(([term, detail]) => (
             <div key={term}>
@@ -224,7 +224,7 @@ function EditForm(props: Props) {
       onSubmit={handleSubmit((values) => props.onSave(getValues(), values))}
       className="flex min-h-0 flex-1 flex-col"
     >
-      <div className="flex flex-1 flex-col gap-6 overflow-y-auto px-6 py-6">
+      <div className="flex flex-1 flex-col gap-6 overflow-x-hidden overflow-y-auto px-6 py-6">
         {serverError && (
           <p
             role="alert"

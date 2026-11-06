@@ -185,3 +185,33 @@ export function openingSummary(days: DayHours[]): string {
   if (!when) return "Closed";
   return `Open ${when} · ${sharedHours(days) ?? "hours vary by day"}`;
 }
+
+/**
+ * A staff card's hours, grouping consecutive days that share hours:
+ * "Tue – Sun · 09:00 – 18:00" when every open day matches, otherwise
+ * "Tue – Sat 09:00 – 18:00 · Sun 09:00 – 13:00". Times stay "HH:MM" for
+ * the mono column.
+ */
+export function weeklyHoursLabel(days: DayHours[]): string {
+  const open = days.filter((d) => d.open && d.ranges.length > 0);
+  if (open.length === 0) return "No hours set";
+  const short = (weekday: number) => WEEKDAY_NAMES[weekday]!.slice(0, 3);
+  const hoursOf = (d: DayHours) => d.ranges.map((r) => `${r.start} – ${r.end}`).join(", ");
+
+  // Runs of consecutive (Monday-first) open days with identical hours.
+  const runs: { from: number; to: number; hours: string }[] = [];
+  for (const weekday of WEEK_ORDER) {
+    const day = open.find((d) => d.weekday === weekday);
+    const last = runs.at(-1);
+    const previous = WEEK_ORDER[WEEK_ORDER.indexOf(weekday) - 1];
+    if (day && last && last.to === previous && last.hours === hoursOf(day)) last.to = weekday;
+    else if (day) runs.push({ from: weekday, to: weekday, hours: hoursOf(day) });
+  }
+  const span = (run: (typeof runs)[number]) =>
+    run.from === run.to ? short(run.from) : `${short(run.from)} – ${short(run.to)}`;
+
+  if (new Set(runs.map((r) => r.hours)).size === 1 && runs.length === 1) {
+    return `${span(runs[0]!)} · ${runs[0]!.hours}`;
+  }
+  return runs.map((run) => `${span(run)} ${run.hours}`).join(" · ");
+}

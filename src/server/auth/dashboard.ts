@@ -4,6 +4,8 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { cache } from "react";
 
+import { env } from "@/env";
+
 import type { RlsClaims } from "@/server/db/client";
 import { listMemberBusinesses, type MemberBusiness } from "@/server/db/queries/dashboard";
 
@@ -41,4 +43,15 @@ export const getDashboardContext = cache(async (): Promise<DashboardContext> => 
 export async function getOwnerContext() {
   const context = await getDashboardContext();
   return context.role === "owner" ? context : null;
+}
+
+/** Remember which business the dashboard shows (switcher, accepting an invite). */
+export async function setCurrentBusiness(businessId: string) {
+  (await cookies()).set(CURRENT_BUSINESS_COOKIE, businessId, {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: env.NODE_ENV === "production",
+    path: "/",
+    maxAge: 60 * 60 * 24 * 365,
+  });
 }

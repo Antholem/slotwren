@@ -31,10 +31,12 @@ export function adminQuery<Args extends TenantScoped, Result>(
 
 /**
  * The lookups that *resolve* a tenant, so they can't take a businessId yet.
- * Each returns the business ID plus public fields only. Adding a kind here is a
+ * Each returns the business ID plus public fields only (invite: the accept page
+ * preview). Adding a kind here is a
  * deliberate, reviewable change.
  */
-export type TenantLookupKind = "bySlug" | "byManageTokenHash" | "byStripeCustomerId";
+export type TenantLookupKind =
+  "bySlug" | "byManageTokenHash" | "byInviteTokenHash" | "byStripeCustomerId";
 
 export function tenantLookup<Args, Result>(
   _kind: TenantLookupKind,
