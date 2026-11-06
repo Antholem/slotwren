@@ -89,7 +89,8 @@ src/
     booking/service.ts   the ONE booking write path
     ai/                  model.ts, prompt.ts, tools.ts
     catalog/             services etc.: auth + validation + Result, behind server actions
-    auth/ billing/ email/ jobs/ supabase/ rate-limit.ts
+    email/send.ts        sendEmail(): Resend, or logs the email when RESEND_API_KEY is unset
+    auth/ billing/ jobs/ supabase/ rate-limit.ts
                          auth/dashboard.ts: getDashboardContext() (user, business, role)
 embed/embed.ts           widget source, bundled by tsup to public/embed.js
 scripts/seed.ts          Lumen Studio seed
@@ -186,7 +187,8 @@ These are hard rules. If a task seems to need breaking one, stop and ask.
 - `pnpm test:e2e` reuses a running `pnpm dev`, which compiles routes and server actions on
   first use and can stall under parallel tests. For a reliable local run (what CI does):
   `pnpm build`, `pnpm start --port 3100`, then `PLAYWRIGHT_BASE_URL=http://localhost:3100
-pnpm test:e2e`. Magic links are followed by path, so any port works.
+pnpm test:e2e --workers=1` (CI also uses one worker; the dev machine stalls Auth and
+  overlays under two). Magic links are followed by path, so any port works.
 - Creating a business via `withRls`: generate the id with `crypto.randomUUID()` and insert
   **without** `.returning()`. A trigger makes the creator the owner, but Postgres checks
   RETURNING against the select policy before that trigger runs (error 42501).

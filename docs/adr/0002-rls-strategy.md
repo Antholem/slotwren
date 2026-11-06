@@ -71,8 +71,12 @@ from `src/server/db/queries/public/` and `queries/system/`.
 - Inserting a business with `RETURNING` fails: the select policy is checked before the
   owner trigger runs. Onboarding generates the id in the app.
 - Accepting a staff invite needs to create a membership, and users can't insert
-  memberships. The invites step will add a `SECURITY DEFINER` function that checks the
-  invite token.
+  memberships. `private.accept_staff_invite(token)` (migration
+  `20261106132152_accept_staff_invite.sql`) is the only way in: `SECURITY DEFINER`,
+  executable by `authenticated` only. It hashes the token in SQL, locks the invite row,
+  checks expiry, single use and that the signed-in email matches, then creates a
+  **staff** membership, links and switches on the staff row, and marks the invite used.
+  Invites never make owners.
 - Realtime (dashboard live bookings) uses these same policies when it's added.
 - Staff can read `businesses.stripe_customer_id`: column grants can't vary by
   role-in-business. It's an identifier, not a secret, and it never reaches public pages.
