@@ -53,7 +53,8 @@ export function BookingPreview(props: PreviewProps) {
         <p className="text-label">Choose a service</p>
         <div
           className="flex items-center justify-between gap-3 rounded-xl border-2 px-4 py-3"
-          style={{ backgroundColor: soft, borderColor: brandColor }}
+          // The tint is always light, so its text is ink in dark mode too.
+          style={{ backgroundColor: soft, borderColor: brandColor, color: INK }}
         >
           <div className="min-w-0">
             <p className="truncate text-label">{service?.name || "Your first service"}</p>

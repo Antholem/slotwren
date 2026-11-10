@@ -1,11 +1,12 @@
 "use client";
 
-import { ChevronDown, ChevronsUpDown, Menu, User } from "lucide-react";
+import { ChevronDown, ChevronsUpDown, Menu, Monitor, Moon, Sun, User } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useRef, useState, useTransition } from "react";
 
 import { Logo } from "@/components/shared/logo";
+import { useThemePreference } from "@/components/shared/theme";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -18,6 +19,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { initialsOf } from "@/lib/color";
+import { saveThemePreference, type ThemePreference } from "@/lib/theme";
 import { cn } from "@/lib/utils";
 
 import { NavList } from "./nav-list";
@@ -133,9 +135,16 @@ function BusinessSwitcher({
   );
 }
 
+const THEMES = [
+  { value: "light", label: "Light", icon: Sun },
+  { value: "dark", label: "Dark", icon: Moon },
+  { value: "system", label: "System", icon: Monitor },
+] as const;
+
 function UserMenu({ role, email }: { role: "owner" | "staff"; email: string | null }) {
   const signOutForm = useRef<HTMLFormElement>(null);
   const roleLabel = role === "owner" ? "Owner" : "Staff";
+  const theme = useThemePreference();
 
   return (
     <>
@@ -163,6 +172,21 @@ function UserMenu({ role, email }: { role: "owner" | "staff"; email: string | nu
           <DropdownMenuItem asChild className="min-h-11">
             <Link href="/app/live">Your booking link</Link>
           </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuLabel className="text-caption font-normal text-muted-foreground">
+            Theme
+          </DropdownMenuLabel>
+          <DropdownMenuRadioGroup
+            value={theme}
+            onValueChange={(value) => saveThemePreference(value as ThemePreference)}
+          >
+            {THEMES.map(({ value, label, icon: Icon }) => (
+              <DropdownMenuRadioItem key={value} value={value} className="min-h-11">
+                <Icon aria-hidden className="size-4" />
+                {label}
+              </DropdownMenuRadioItem>
+            ))}
+          </DropdownMenuRadioGroup>
           <DropdownMenuSeparator />
           <DropdownMenuItem
             className="min-h-11"
