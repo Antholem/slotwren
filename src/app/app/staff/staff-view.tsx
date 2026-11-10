@@ -1,7 +1,7 @@
 "use client";
 
 import { Plus, UserPlus, Users } from "lucide-react";
-import { useMemo, useOptimistic, useState, useTransition } from "react";
+import { useId, useMemo, useOptimistic, useState, useTransition } from "react";
 import { toast } from "sonner";
 
 import { PageBody, PageHeader } from "@/components/dashboard/page-header";
@@ -177,7 +177,7 @@ export function statusOf(person: DashboardStaff): "active" | "invited" | "inacti
   return person.active ? "active" : "inactive";
 }
 
-export function StatusBadge({ person }: { person: DashboardStaff }) {
+export function StatusBadge({ person, id }: { person: DashboardStaff; id?: string }) {
   const status = statusOf(person);
   const styles = {
     active: "bg-success-soft text-success-text",
@@ -187,6 +187,7 @@ export function StatusBadge({ person }: { person: DashboardStaff }) {
   const labels = { active: "Active", invited: "Invited", inactive: "Not bookable" } as const;
   return (
     <span
+      id={id}
       className={cn("rounded-full px-2.5 py-0.5 text-caption whitespace-nowrap", styles[status])}
     >
       {labels[status]}
@@ -230,6 +231,10 @@ function StaffCard({
   onOpen: () => void;
 }) {
   const nextOff = person.timeOff.find((t) => t.endsAt > context.now);
+  // Named "Edit Aiko" from a hidden verb and the visible name; described by
+  // the rest of the card, so screen readers hear what sighted users see.
+  const ids = { verb: useId(), name: useId(), title: useId(), status: useId(), details: useId() };
+  const verb = canEdit ? "Edit" : person.isMe ? "Open your schedule," : "View";
   const services = person.serviceIds.length;
   const extras = [
     `${services} ${services === 1 ? "service" : "services"}`,
@@ -242,7 +247,8 @@ function StaffCard({
       onClick={onOpen}
       disabled={person.pending}
       aria-haspopup="dialog"
-      aria-label={`${canEdit ? "Edit" : person.isMe ? "Open your schedule," : "View"} ${person.name}`}
+      aria-labelledby={`${ids.verb} ${ids.name}`}
+      aria-describedby={`${ids.title} ${ids.status} ${ids.details}`}
       className={cn(
         "flex h-full w-full flex-col gap-4 rounded-xl border border-l-4 bg-card p-5 text-left hover:bg-muted/40 focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none",
         EDGE[person.color],
@@ -250,18 +256,23 @@ function StaffCard({
         !person.active && !person.invite && "bg-background",
       )}
     >
+      <span id={ids.verb} className="sr-only">
+        {verb}
+      </span>
       <span className="flex w-full items-start gap-4">
         <StaffAvatar person={person} />
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-title">{person.name}</span>
-          <span className="block truncate text-body-sm text-muted-foreground">
+          <span id={ids.name} className="block truncate text-title">
+            {person.name}
+          </span>
+          <span id={ids.title} className="block truncate text-body-sm text-muted-foreground">
             {[person.title, person.isOwner ? "Owner" : null].filter(Boolean).join(" · ") ||
               "No title"}
           </span>
         </span>
-        <StatusBadge person={person} />
+        <StatusBadge person={person} id={ids.status} />
       </span>
-      <span className="flex flex-col gap-1">
+      <span id={ids.details} className="flex flex-col gap-1">
         <span className="font-mono text-mono-sm text-muted-foreground tabular-nums">
           {hoursLabel(person)}
         </span>

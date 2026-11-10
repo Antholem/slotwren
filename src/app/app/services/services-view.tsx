@@ -1,7 +1,7 @@
 "use client";
 
 import { Archive, ChevronRight, Plus, Scissors } from "lucide-react";
-import { useOptimistic, useState, useTransition } from "react";
+import { useId, useOptimistic, useState, useTransition } from "react";
 import { toast } from "sonner";
 
 import { PageBody, PageHeader } from "@/components/dashboard/page-header";
@@ -272,7 +272,7 @@ function ServiceList({
   onOpen: (id: string) => void;
 }) {
   const staffFor = (service: Row) => staff.filter((m) => service.staffIds.includes(m.id));
-  const openLabel = (service: Row) => `${canEdit ? "Edit" : "View"} ${service.name}`;
+  const verb = canEdit ? "Edit" : "View";
 
   return (
     <>
@@ -312,24 +312,11 @@ function ServiceList({
                 )}
               >
                 <td className="px-6 py-4">
-                  <button
-                    type="button"
-                    disabled={service.pending}
-                    aria-haspopup="dialog"
-                    aria-label={openLabel(service)}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      onOpen(service.id);
-                    }}
-                    className="rounded-sm text-left focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
-                  >
-                    <span className="block text-label">{service.name}</span>
-                    {service.description && (
-                      <span className="block text-body-sm text-muted-foreground">
-                        {service.description}
-                      </span>
-                    )}
-                  </button>
+                  <ServiceNameButton
+                    service={service}
+                    verb={verb}
+                    onOpen={() => onOpen(service.id)}
+                  />
                   {service.pending && <span className="sr-only">Saving</span>}
                 </td>
                 <td className="px-4 py-4 font-mono text-mono whitespace-nowrap tabular-nums">
@@ -357,33 +344,13 @@ function ServiceList({
       <ul className="flex flex-col gap-3 md:hidden">
         {services.map((service) => (
           <li key={service.id}>
-            <button
-              type="button"
-              disabled={service.pending}
-              aria-haspopup="dialog"
-              aria-label={openLabel(service)}
-              onClick={() => onOpen(service.id)}
-              className={cn(
-                "flex w-full flex-col gap-2 rounded-xl border bg-card p-4 text-left focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none",
-                service.pending && "opacity-60",
-              )}
-            >
-              <span className="flex w-full items-start justify-between gap-3">
-                <span className="min-w-0">
-                  <span className="block text-label">{service.name}</span>
-                  {service.description && (
-                    <span className="block text-body-sm text-muted-foreground">
-                      {service.description}
-                    </span>
-                  )}
-                </span>
-                <OnlineBadge active={service.active} />
-              </span>
-              <span className="font-mono text-mono tabular-nums">
-                {formatMinutes(service.durationMin)} · {formatPrice(service.priceCents, currency)}
-              </span>
-              <StaffNames staff={staffFor(service)} className="text-body-sm" />
-            </button>
+            <ServiceCard
+              service={service}
+              verb={verb}
+              currency={currency}
+              staff={staffFor(service)}
+              onOpen={() => onOpen(service.id)}
+            />
           </li>
         ))}
       </ul>
@@ -391,14 +358,125 @@ function ServiceList({
   );
 }
 
-function OnlineBadge({ active }: { active: boolean }) {
+/*
+ * Named "Edit Haircut" from a hidden verb and the visible name, and described
+ * by the rest of what it shows, so screen readers hear what sighted users see.
+ */
+
+/** The table's first cell: the other cells are read as the row. */
+function ServiceNameButton({
+  service,
+  verb,
+  onOpen,
+}: {
+  service: Row;
+  verb: string;
+  onOpen: () => void;
+}) {
+  const ids = { verb: useId(), name: useId(), description: useId() };
+  return (
+    <button
+      type="button"
+      disabled={service.pending}
+      aria-haspopup="dialog"
+      aria-labelledby={`${ids.verb} ${ids.name}`}
+      aria-describedby={service.description ? ids.description : undefined}
+      onClick={(event) => {
+        event.stopPropagation();
+        onOpen();
+      }}
+      className="rounded-sm text-left focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+    >
+      <span id={ids.verb} className="sr-only">
+        {verb}
+      </span>
+      <span id={ids.name} className="block text-label">
+        {service.name}
+      </span>
+      {service.description && (
+        <span id={ids.description} className="block text-body-sm text-muted-foreground">
+          {service.description}
+        </span>
+      )}
+    </button>
+  );
+}
+
+function ServiceCard({
+  service,
+  verb,
+  currency,
+  staff,
+  onOpen,
+}: {
+  service: Row;
+  verb: string;
+  currency: string;
+  staff: StaffOption[];
+  onOpen: () => void;
+}) {
+  const ids = {
+    verb: useId(),
+    name: useId(),
+    description: useId(),
+    status: useId(),
+    details: useId(),
+  };
+  return (
+    <button
+      type="button"
+      disabled={service.pending}
+      aria-haspopup="dialog"
+      aria-labelledby={`${ids.verb} ${ids.name}`}
+      aria-describedby={[service.description && ids.description, ids.status, ids.details]
+        .filter(Boolean)
+        .join(" ")}
+      onClick={onOpen}
+      className={cn(
+        "flex w-full flex-col gap-2 rounded-xl border bg-card p-4 text-left focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none",
+        service.pending && "opacity-60",
+      )}
+    >
+      <span id={ids.verb} className="sr-only">
+        {verb}
+      </span>
+      <span className="flex w-full items-start justify-between gap-3">
+        <span className="min-w-0">
+          <span id={ids.name} className="block text-label">
+            {service.name}
+          </span>
+          {service.description && (
+            <span id={ids.description} className="block text-body-sm text-muted-foreground">
+              {service.description}
+            </span>
+          )}
+        </span>
+        <OnlineBadge active={service.active} id={ids.status} />
+      </span>
+      <span id={ids.details} className="flex flex-col gap-2">
+        <span className="font-mono text-mono tabular-nums">
+          {formatMinutes(service.durationMin)} · {formatPrice(service.priceCents, currency)}
+        </span>
+        <StaffNames staff={staff} className="text-body-sm" />
+      </span>
+    </button>
+  );
+}
+
+function OnlineBadge({ active, id }: { active: boolean; id?: string }) {
   return active ? (
-    <span className="inline-flex items-center gap-1.5 rounded-full bg-success-soft px-2.5 py-0.5 text-caption whitespace-nowrap text-success-text">
+    <span
+      id={id}
+      className="inline-flex items-center gap-1.5 rounded-full bg-success-soft px-2.5 py-0.5 text-caption whitespace-nowrap text-success-text"
+    >
       <span aria-hidden className="size-1.5 rounded-full bg-current" />
       Bookable
     </span>
   ) : (
-    <span className="inline-flex items-center rounded-full border px-2.5 py-0.5 text-caption whitespace-nowrap text-muted-foreground">
+    <span
+      id={id}
+      className="inline-flex items-center rounded-full border px-2.5 py-0.5 text-caption whitespace-nowrap text-muted-foreground"
+    >
       Hidden
     </span>
   );
