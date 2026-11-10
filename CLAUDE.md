@@ -77,7 +77,7 @@ src/
     booking/ dashboard/ chat/ settings/ marketing/ shared/
   emails/                React Email templates
   hooks/                 client hooks (Realtime, media queries)
-  lib/                   client-safe pure helpers: result.ts, money, dates, hours, time-off, utils
+  lib/                   client-safe pure helpers: result.ts, money, dates, hours, time-off, theme, utils
   server/                server-only (`import "server-only"`)
     db/schema.ts         Drizzle schema
     db/client.ts         withRls() (and the raw adminDb, used only by db/admin.ts)
@@ -154,7 +154,14 @@ These are hard rules. If a task seems to need breaking one, stop and ask.
   staff name next to the colour.
 - **Time.** Persist instants as UTC `timestamptz`. Convert at the edges with
   `@date-fns/tz` (`TZDate`). Working hours are local wall-clock `time` in the business
-  timezone. Show customers their own timezone and note the business's.
+  timezone. Show customers their own timezone and note the business's. Print business
+  dates with `formatInZone()` (`src/lib/dates.ts`), never `Intl`/`toLocale…String` without
+  a timezone: the server and the browser would disagree (and hydration mismatch).
+- **Money input.** `parsePriceToCents(text, currency)` reads "35,50" and "1.234,56";
+  ambiguous "1,234" follows the currency and is refused rather than guessed.
+- **Theme.** Light, dark or system, applied before first paint by `THEME_SCRIPT`
+  (`src/lib/theme.ts`); the account menu switches it. Check new pages in dark (e2e
+  `dark-mode.spec.ts` runs axe over them).
 - **Hours and time off.** Weekly hours: `src/lib/hours.ts` (`weekSchemaFor` on the slot
   grid) edited with `components/shared/week-editor.tsx` (onboarding and the staff sheet).
   Time off: `src/lib/time-off.ts` converts business-local dates to instants; all-day runs
