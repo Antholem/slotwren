@@ -15,12 +15,12 @@ import { Textarea } from "@/components/ui/textarea";
 import { parsePriceToCents } from "@/lib/money";
 import { cn } from "@/lib/utils";
 import {
-  BUFFER_OPTIONS,
-  DURATION_OPTIONS,
-  type ServiceInput,
-  serviceSchemaFor,
-  type ServiceValues,
-} from "@/lib/validation/onboarding";
+  BUFFER_CHOICES,
+  DURATION_CHOICES,
+  firstServiceSchemaFor,
+  type FirstServiceInput,
+  type FirstServiceValues,
+} from "@/lib/validation/services";
 
 import { saveServiceAction } from "../actions";
 import { useStepSubmit } from "../use-step-submit";
@@ -28,7 +28,7 @@ import { useStepSubmit } from "../use-step-submit";
 type Props = {
   currency: string;
   currencySymbol: string;
-  initial: ServiceInput;
+  initial: FirstServiceInput;
   preview: PreviewProps;
 };
 
@@ -36,8 +36,8 @@ const durationLabel = (min: number) =>
   min < 60 || min % 60 !== 0 ? `${min} min` : `${min / 60} h`;
 
 export function ServiceForm({ currency, currencySymbol, initial, preview }: Props) {
-  const form = useForm<ServiceInput, unknown, ServiceValues>({
-    resolver: zodResolver(serviceSchemaFor(currency)),
+  const form = useForm<FirstServiceInput, unknown, FirstServiceValues>({
+    resolver: zodResolver(firstServiceSchemaFor(currency)),
     defaultValues: initial,
     mode: "onTouched",
   });
@@ -110,7 +110,7 @@ export function ServiceForm({ currency, currencySymbol, initial, preview }: Prop
               className="[&_select]:font-mono [&_select]:tabular-nums"
               {...register("durationMin", { valueAsNumber: true })}
             >
-              {DURATION_OPTIONS.map((min) => (
+              {DURATION_CHOICES.map((min) => (
                 <option key={min} value={min}>
                   {durationLabel(min)}
                 </option>
@@ -153,7 +153,7 @@ export function ServiceForm({ currency, currencySymbol, initial, preview }: Prop
               aria-describedby={ids.bufferHint}
               {...register("bufferAfterMin", { valueAsNumber: true })}
             >
-              {BUFFER_OPTIONS.map((min) => (
+              {BUFFER_CHOICES.map((min) => (
                 <option key={min} value={min}>
                   {min === 0 ? "None" : `${min} min`}
                 </option>

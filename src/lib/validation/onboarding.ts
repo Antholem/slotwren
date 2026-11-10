@@ -5,8 +5,6 @@ import { weekSchema } from "@/lib/hours";
 import { slugSchema } from "@/lib/slug";
 import { isValidTimeZone } from "@/lib/timezones";
 
-import { priceField } from "./services";
-
 /*
  * One schema per wizard step, shared by the client forms (React Hook Form) and
  * the server actions, which re-validate everything.
@@ -46,32 +44,6 @@ export const brandSchema = z.object({
   logoUrl: z.url().nullable(),
 });
 export type BrandInput = z.input<typeof brandSchema>;
-
-export const DURATION_OPTIONS = [15, 20, 30, 45, 60, 75, 90, 120, 150, 180, 240] as const;
-export const BUFFER_OPTIONS = [0, 5, 10, 15, 30] as const;
-
-export const serviceSchemaFor = (currency: string) =>
-  z.object({
-    name: z
-      .string()
-      .trim()
-      .min(2, "Name the service, like “Haircut”.")
-      .max(80, "Keep it under 80 characters."),
-    durationMin: z.coerce
-      .number()
-      .refine((n) => (DURATION_OPTIONS as readonly number[]).includes(n), "Pick a duration."),
-    price: priceField(currency),
-    bufferAfterMin: z.coerce
-      .number()
-      .refine((n) => (BUFFER_OPTIONS as readonly number[]).includes(n), "Pick a buffer."),
-    description: z
-      .string()
-      .trim()
-      .max(160, "Keep it to one line (160 characters).")
-      .transform((value) => value || null),
-  });
-export type ServiceInput = z.input<ReturnType<typeof serviceSchemaFor>>;
-export type ServiceValues = z.output<ReturnType<typeof serviceSchemaFor>>;
 
 export const hoursSchema = z.object({ days: weekSchema });
 export type HoursInput = z.input<typeof hoursSchema>;

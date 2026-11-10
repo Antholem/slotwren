@@ -2,6 +2,12 @@ import { z } from "zod";
 
 import { parsePriceToCents, priceExample } from "@/lib/money";
 
+/*
+ * The one service schema. The Services side sheet uses all of it; onboarding's
+ * "Add your first service" picks the fields it asks for. Shared by the forms
+ * and the server, which re-validates. The ranges match the services CHECKs.
+ */
+
 /** Offered in the duration picker; any multiple of 5 up to 8 h is valid. */
 export const DURATION_CHOICES = [15, 20, 30, 45, 60, 75, 90, 105, 120, 150, 180, 240] as const;
 export const BUFFER_CHOICES = [0, 5, 10, 15, 20, 30, 45, 60] as const;
@@ -24,11 +30,7 @@ export const priceField = (currency: string) =>
     )
     .transform((value) => parsePriceToCents(value, currency)!);
 
-/**
- * The service side sheet, for a business's currency. Shared by the form and
- * the server, which re-validates.
- */
-export const serviceFormSchemaFor = (currency: string) =>
+const serviceFieldsFor = (currency: string) =>
   z.object({
     name: z
       .string()
@@ -44,6 +46,11 @@ export const serviceFormSchemaFor = (currency: string) =>
     price: priceField(currency),
     bufferBeforeMin: minutes(120, "Use 5-minute steps."),
     bufferAfterMin: minutes(120, "Use 5-minute steps."),
+  });
+
+/** The Services side sheet, for a business's currency. */
+export const serviceFormSchemaFor = (currency: string) =>
+  serviceFieldsFor(currency).extend({
     active: z.boolean(),
     staffIds: z
       .array(z.uuid())
@@ -54,3 +61,20 @@ export const serviceFormSchemaFor = (currency: string) =>
 type ServiceFormSchema = ReturnType<typeof serviceFormSchemaFor>;
 export type ServiceFormInput = z.input<ServiceFormSchema>;
 export type ServiceFormValues = z.output<ServiceFormSchema>;
+
+/**
+ * Onboarding's first service: the same rules, fewer fields. It's bookable
+ * online and offered by the owner; buffers before start at 0.
+ */
+export const firstServiceSchemaFor = (currency: string) =>
+  serviceFieldsFor(currency).pick({
+    name: true,
+    description: true,
+    durationMin: true,
+    price: true,
+    bufferAfterMin: true,
+  });
+
+type FirstServiceSchema = ReturnType<typeof firstServiceSchemaFor>;
+export type FirstServiceInput = z.input<FirstServiceSchema>;
+export type FirstServiceValues = z.output<FirstServiceSchema>;
