@@ -55,6 +55,14 @@ test("an owner changes the booking rules and the booking link", async ({ page })
   await expect(page.getByText("Settings saved")).toBeVisible();
   await expect(page.getByText(`/b/${newSlug}.`, { exact: false })).toBeVisible();
 
+  // The toast doesn't cover the sticky Save bar.
+  const toast = page.locator("[data-sonner-toast]").filter({ hasText: "Settings saved" });
+  const bar = page.getByRole("button", { name: "Save changes" }).locator("xpath=..");
+  await expect(async () => {
+    const [t, b] = [await toast.boundingBox(), await bar.boundingBox()];
+    expect(t!.y + t!.height).toBeLessThanOrEqual(b!.y);
+  }).toPass();
+
   expect(await businessRow(fixture.business.id)).toMatchObject({
     slug: newSlug,
     minNoticeMin: 1440,

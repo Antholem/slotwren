@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useStickyBar } from "@/hooks/use-sticky-bar";
 import {
   type DayHours,
   defaultWeek,
@@ -93,6 +94,7 @@ export function BusinessForm({
   });
   const { register, setValue, control, formState, setError, clearErrors, reset } = form;
   const [pending, startTransition] = useTransition();
+  useStickyBar(); // toasts sit above the Save bar
 
   const [name, slug, timezone, currency, brandColor, logoUrl, openingHours, rules, rounding] =
     useWatch({
