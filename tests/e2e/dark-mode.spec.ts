@@ -73,6 +73,7 @@ test.describe("dark mode", () => {
     expect(await isDark(page)).toBe(true);
     await expectNoAxeViolations(page);
 
+    await page.getByLabel("Your name").fill("Noor");
     await page.getByLabel("Business name").fill(`Night Owl ${Date.now().toString(36)}`);
     await expect(page.getByText("Available")).toBeVisible({ timeout: 10_000 });
     await page.getByRole("button", { name: "Continue" }).click();

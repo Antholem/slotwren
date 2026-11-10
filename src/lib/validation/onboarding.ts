@@ -21,6 +21,8 @@ export const ONBOARDING_STEPS = [
 export type OnboardingStep = (typeof ONBOARDING_STEPS)[number]["step"];
 
 export const basicsSchema = z.object({
+  /** The owner: their staff card, "Mia invited you", the account menu. */
+  ownerName: z.string().trim().min(1, "Enter your name.").max(60, "Keep it under 60 characters."),
   name: z
     .string()
     .trim()

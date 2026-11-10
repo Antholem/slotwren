@@ -47,6 +47,8 @@ export type SetupState = {
     description: string | null;
   } | null;
   hours: { weekday: number; startTime: string; endTime: string }[];
+  /** The owner's name on this business (their staff row). */
+  ownerName: string | null;
 };
 
 /** "none": no business yet · "setup": wizard unfinished · "ready": a live business. */
@@ -150,7 +152,13 @@ export async function getSetupState(
           )
       : [];
 
-    return { business, service: service ?? null, hours };
+    const [ownerRow] = ownerStaff
+      ? await tx
+          .select({ name: staff.name })
+          .from(staff)
+          .where(and(eq(staff.id, ownerStaff.id), eq(staff.businessId, business.id)))
+      : [];
+    return { business, service: service ?? null, hours, ownerName: ownerRow?.name ?? null };
   });
 }
 
@@ -175,18 +183,35 @@ export async function isSlugAvailable(
   });
 }
 
-type BasicsValues = { name: string; slug: string; timezone: string };
+type BasicsValues = { ownerName: string; name: string; slug: string; timezone: string };
+
+/** The signed-in user's name from their profile (Google fills it in), or null. */
+export async function getProfileName(claims: RlsClaims): Promise<string | null> {
+  const [row] = await withRls(claims, (tx) =>
+    tx.select({ fullName: profiles.fullName }).from(profiles).where(eq(profiles.id, claims.sub)),
+  );
+  return row?.fullName?.trim() || null;
+}
 
 /**
  * Step 1. Creates the business (the creator becomes its owner by trigger) and
  * the owner's staff row, or updates the unfinished business on a revisit.
  * Throws Postgres 23505 if the slug was taken in the meantime.
  */
-export async function saveBasics(claims: RlsClaims, values: BasicsValues): Promise<string> {
+export async function saveBasics(
+  claims: RlsClaims,
+  { ownerName, ...values }: BasicsValues,
+): Promise<string> {
   return withRls(claims, async (tx) => {
+    await tx.update(profiles).set({ fullName: ownerName }).where(eq(profiles.id, claims.sub));
+
     const existing = await findSetupBusiness(tx, claims.sub, { includeLive: false });
     if (existing) {
       await tx.update(businesses).set(values).where(eq(businesses.id, existing.id));
+      await tx
+        .update(staff)
+        .set({ name: ownerName })
+        .where(and(eq(staff.businessId, existing.id), eq(staff.userId, claims.sub)));
       return existing.id;
     }
 
@@ -194,14 +219,10 @@ export async function saveBasics(claims: RlsClaims, values: BasicsValues): Promi
     const id = randomUUID();
     await tx.insert(businesses).values({ id, ...values, setupStep: 1 });
 
-    const [profile] = await tx
-      .select({ fullName: profiles.fullName })
-      .from(profiles)
-      .where(eq(profiles.id, claims.sub));
     await tx.insert(staff).values({
       businessId: id,
       userId: claims.sub,
-      name: staffNameFor(profile?.fullName, claims.email),
+      name: ownerName,
       email: claims.email ?? null,
       color: staffColorFor(0),
     });

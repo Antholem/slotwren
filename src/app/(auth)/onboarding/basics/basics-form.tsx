@@ -21,14 +21,16 @@ import { useStepSubmit } from "../use-step-submit";
 
 type Props = {
   timeZones: { value: string; label: string }[];
+  /** Prefilled from Google or an earlier visit. */
+  ownerName: string;
   initial: BasicsInput | null;
   preview: PreviewProps;
 };
 
-export function BasicsForm({ timeZones, initial, preview }: Props) {
+export function BasicsForm({ timeZones, ownerName, initial, preview }: Props) {
   const form = useForm<BasicsInput>({
     resolver: zodResolver(basicsSchema),
-    defaultValues: initial ?? { name: "", slug: "", timezone: "" },
+    defaultValues: initial ?? { ownerName, name: "", slug: "", timezone: "" },
     mode: "onTouched",
   });
   const { register, setValue, control, formState } = form;
@@ -59,6 +61,9 @@ export function BasicsForm({ timeZones, initial, preview }: Props) {
 
   const slugStatus = useSlugStatus(slug, checkSlug);
   const ids = {
+    ownerName: useId(),
+    ownerNameError: useId(),
+    ownerNameHint: useId(),
     name: useId(),
     nameError: useId(),
     slug: useId(),
@@ -82,6 +87,29 @@ export function BasicsForm({ timeZones, initial, preview }: Props) {
             {formError}
           </p>
         )}
+
+        <div className="flex flex-col gap-2">
+          <Label htmlFor={ids.ownerName} className="text-label">
+            Your name
+          </Label>
+          <Input
+            id={ids.ownerName}
+            autoComplete="name"
+            placeholder="Mia Santos"
+            aria-invalid={!!formState.errors.ownerName || undefined}
+            aria-describedby={
+              formState.errors.ownerName
+                ? `${ids.ownerNameError} ${ids.ownerNameHint}`
+                : ids.ownerNameHint
+            }
+            className="h-11 px-3 text-body md:text-body"
+            {...register("ownerName")}
+          />
+          <FieldError id={ids.ownerNameError} message={formState.errors.ownerName?.message} />
+          <p id={ids.ownerNameHint} className="text-body-sm text-muted-foreground">
+            Shown to your team, and to customers when they book with you.
+          </p>
+        </div>
 
         <div className="flex flex-col gap-2">
           <Label htmlFor={ids.name} className="text-label">

@@ -13,6 +13,7 @@ import {
   saveBrand,
   saveFirstService,
   saveHours,
+  getProfileName,
   staffNameFor,
 } from "@/server/db/queries/onboarding";
 import * as schema from "@/server/db/schema";
@@ -48,7 +49,13 @@ describe("onboarding wizard", () => {
 
   it("step 1 creates the business, makes the user its owner and a staff member", async () => {
     expect(await isSlugAvailable(owner, slug)).toBe(true);
-    businessId = await saveBasics(owner, { name: "Wizard Studio", slug, timezone: "Asia/Manila" });
+    expect(await getProfileName(owner)).toBeNull(); // magic link: no name yet
+    businessId = await saveBasics(owner, {
+      ownerName: "Mia Santos",
+      name: "Wizard Studio",
+      slug,
+      timezone: "Asia/Manila",
+    });
 
     const state = await getSetupState(owner);
     expect(state?.business).toMatchObject({
@@ -70,11 +77,15 @@ describe("onboarding wizard", () => {
       .from(schema.staff)
       .where(eq(schema.staff.businessId, businessId));
     expect(team).toHaveLength(1);
-    expect(team[0]).toMatchObject({ userId: owner.sub, color: "teal" });
+    expect(team[0]).toMatchObject({ userId: owner.sub, color: "teal", name: "Mia Santos" });
+    // Their profile too: "Mia invited you", the account menu.
+    expect(await getProfileName(owner)).toBe("Mia Santos");
+    expect(state?.ownerName).toBe("Mia Santos");
   });
 
   it("revisiting step 1 updates the same business instead of creating another", async () => {
     const again = await saveBasics(owner, {
+      ownerName: "Mia S.",
       name: "Wizard Studio & Spa",
       slug,
       timezone: "Europe/London",
@@ -86,6 +97,7 @@ describe("onboarding wizard", () => {
       .where(eq(schema.memberships.userId, owner.sub));
     expect(owned).toHaveLength(1);
     expect((await getSetupState(owner))?.business.name).toBe("Wizard Studio & Spa");
+    expect((await getSetupState(owner))?.ownerName).toBe("Mia S.");
   });
 
   it("treats its own slug as available, and a taken one as not", async () => {

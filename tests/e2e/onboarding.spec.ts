@@ -19,6 +19,7 @@ async function fillBasics(page: Page, name: string) {
   await expect(page).toHaveURL(/\/onboarding\/basics$/);
   // Hydrated once the browser timezone is detected (slow on a cold dev server).
   await expect(page.getByText("Detected")).toBeVisible({ timeout: 15_000 });
+  await page.getByLabel("Your name").fill("Mia Santos");
   await page.getByLabel("Business name").fill(name);
   await expect(page.getByText("Available")).toBeVisible({ timeout: 10_000 });
 }
@@ -114,6 +115,10 @@ test("sign up, finish the wizard and see the booking link", async ({ page }) => 
   // Live owners use the dashboard; the wizard sends them there.
   await page.goto("/onboarding");
   await expect(page).toHaveURL(/\/app$/, { timeout: 15_000 });
+
+  // The name from step 1, not one guessed from the email address.
+  await page.goto("/app/staff");
+  await expect(page.getByRole("button", { name: "Edit Mia Santos" })).toBeVisible();
 
   expect(errors).toEqual([]);
 });
