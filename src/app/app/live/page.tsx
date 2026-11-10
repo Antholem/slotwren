@@ -39,7 +39,8 @@ const NEXT_STEPS = [
 ];
 
 async function Live() {
-  const { business, claims } = await getDashboardContext();
+  const { business, claims, role } = await getDashboardContext();
+  const isOwner = role === "owner";
   const url = bookingUrl(business.slug);
   const display = bookingLinkLabel(business.slug);
   const days = fromAvailabilityRows(await listBusinessHours(claims, business.id));
@@ -79,19 +80,21 @@ async function Live() {
             </h2>
             <CopyLinkField url={url} display={display} />
             <LinkActions url={url} name={business.name} />
-            <div className="flex flex-col items-start gap-3 rounded-xl bg-primary-tint p-6 text-primary-tint-foreground">
-              <h3 className="text-title">Add booking to your website</h3>
-              <p className="text-body">
-                Paste one line of code and a &ldquo;Book now&rdquo; button appears on every page,
-                with the AI receptionist if you want it.
-              </p>
-              <Button asChild className="mt-1 h-11 px-5 text-label">
-                <Link href="/app/settings/embed">
-                  Add to your website
-                  <ArrowRight aria-hidden />
-                </Link>
-              </Button>
-            </div>
+            {isOwner && (
+              <div className="flex flex-col items-start gap-3 rounded-xl bg-primary-tint p-6 text-primary-tint-foreground">
+                <h3 className="text-title">Add booking to your website</h3>
+                <p className="text-body">
+                  Paste one line of code and a &ldquo;Book now&rdquo; button appears on every page,
+                  with the AI receptionist if you want it.
+                </p>
+                <Button asChild className="mt-1 h-11 px-5 text-label">
+                  <Link href="/app/settings/embed">
+                    Add to your website
+                    <ArrowRight aria-hidden />
+                  </Link>
+                </Button>
+              </div>
+            )}
           </section>
 
           <section
@@ -115,27 +118,29 @@ async function Live() {
           </section>
         </div>
 
-        <section aria-labelledby="next-title" className="flex flex-col gap-4">
-          <h2 id="next-title" className="text-title">
-            Finish setting up
-          </h2>
-          <ol className="grid gap-4 md:grid-cols-3">
-            {NEXT_STEPS.map((step, i) => (
-              <li key={step.title} className="flex gap-4 rounded-xl border bg-card p-5">
-                <span
-                  aria-hidden
-                  className="flex size-8 shrink-0 items-center justify-center rounded-full bg-muted font-mono text-mono-sm text-muted-foreground"
-                >
-                  {i + 1}
-                </span>
-                <div>
-                  <p className="text-label">{step.title}</p>
-                  <p className="mt-1 text-body-sm text-muted-foreground">{step.body}</p>
-                </div>
-              </li>
-            ))}
-          </ol>
-        </section>
+        {isOwner && (
+          <section aria-labelledby="next-title" className="flex flex-col gap-4">
+            <h2 id="next-title" className="text-title">
+              Finish setting up
+            </h2>
+            <ol className="grid gap-4 md:grid-cols-3">
+              {NEXT_STEPS.map((step, i) => (
+                <li key={step.title} className="flex gap-4 rounded-xl border bg-card p-5">
+                  <span
+                    aria-hidden
+                    className="flex size-8 shrink-0 items-center justify-center rounded-full bg-muted font-mono text-mono-sm text-muted-foreground"
+                  >
+                    {i + 1}
+                  </span>
+                  <div>
+                    <p className="text-label">{step.title}</p>
+                    <p className="mt-1 text-body-sm text-muted-foreground">{step.body}</p>
+                  </div>
+                </li>
+              ))}
+            </ol>
+          </section>
+        )}
       </div>
     </main>
   );

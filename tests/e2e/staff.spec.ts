@@ -192,6 +192,13 @@ test("an invitee who signs in on another device still joins the team", async ({
   await expectNoAxeViolations(phone);
   await phone.getByRole("button", { name: `Accept and join ${fixture.business.name}` }).click();
   await expect(phone).toHaveURL(/\/app$/);
+  // Staff don't get the owner's setup prompts.
+  await expect(phone.getByRole("link", { name: /Your schedule/ })).toBeVisible();
+  await expect(phone.getByText("Add the rest of your menu")).toHaveCount(0);
+  await phone.goto("/app/live");
+  await expect(phone.getByRole("heading", { name: "Your booking link", level: 2 })).toBeVisible();
+  await expect(phone.getByRole("heading", { name: "Finish setting up" })).toHaveCount(0);
+  await expect(phone.getByRole("link", { name: /Add to your website/ })).toHaveCount(0);
   await phone.goto("/app/staff");
   const ownCard = phone.getByRole("button", { name: "Open your schedule, Pat" });
   await expect(ownCard).toContainText("Active");
