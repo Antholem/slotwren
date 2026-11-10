@@ -12,8 +12,12 @@ let client: Resend | null = null;
 
 /**
  * Send a transactional email with Resend. Without RESEND_API_KEY (local dev,
- * previews before launch) it logs what it would have sent instead of failing,
- * so flows keep working; callers show a copyable link either way. Never throws.
+ * previews before launch) it skips sending instead of failing, so flows keep
+ * working; callers show a copyable link either way. Never throws.
+ *
+ * `logLines` (the links inside: invite and manage links are bearer tokens)
+ * are logged in development only. Anywhere else they would land in hosted
+ * logs, so the owner's copy-once dialog is the only place they appear.
  */
 export async function sendEmail({
   to,
@@ -24,14 +28,13 @@ export async function sendEmail({
   to: string;
   subject: string;
   react: ReactElement;
-  /** What to log when email isn't configured, e.g. the link inside. */
+  /** Logged in development when email isn't configured, e.g. the link inside. */
   logLines: string[];
 }): Promise<SendResult> {
   if (!env.RESEND_API_KEY) {
+    const details = env.NODE_ENV === "development" ? [`To: ${to}`, ...logLines] : [];
     console.info(
-      [`[email] RESEND_API_KEY not set; not sending "${subject}" to ${to}.`, ...logLines].join(
-        "\n  ",
-      ),
+      [`[email] RESEND_API_KEY not set; not sending "${subject}".`, ...details].join("\n  "),
     );
     return { delivered: false, reason: "not_configured" };
   }
