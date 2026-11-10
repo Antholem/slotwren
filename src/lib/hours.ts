@@ -307,8 +307,18 @@ export function openingSummary(days: DayHours[]): string {
  * the mono column.
  */
 export function weeklyHoursLabel(days: DayHours[]): string {
+  const parts = weeklyHoursParts(days);
+  return parts.length ? parts.join(" · ") : "No hours set";
+}
+
+/**
+ * The same, as its parts: ["Tue – Sat 09:00 – 18:00", "Sun 09:00 – 13:00"],
+ * so a narrow card can wrap between ranges instead of inside one. A single
+ * run splits into its days and its hours: ["Tue – Sun", "09:00 – 18:00"].
+ */
+export function weeklyHoursParts(days: DayHours[]): string[] {
   const open = days.filter((d) => d.open && d.ranges.length > 0);
-  if (open.length === 0) return "No hours set";
+  if (open.length === 0) return [];
   const short = (weekday: number) => WEEKDAY_NAMES[weekday]!.slice(0, 3);
   const hoursOf = (d: DayHours) => d.ranges.map((r) => `${r.start} – ${r.end}`).join(", ");
 
@@ -324,8 +334,6 @@ export function weeklyHoursLabel(days: DayHours[]): string {
   const span = (run: (typeof runs)[number]) =>
     run.from === run.to ? short(run.from) : `${short(run.from)} – ${short(run.to)}`;
 
-  if (new Set(runs.map((r) => r.hours)).size === 1 && runs.length === 1) {
-    return `${span(runs[0]!)} · ${runs[0]!.hours}`;
-  }
-  return runs.map((run) => `${span(run)} ${run.hours}`).join(" · ");
+  if (runs.length === 1) return [span(runs[0]!), runs[0]!.hours];
+  return runs.map((run) => `${span(run)} ${run.hours}`);
 }

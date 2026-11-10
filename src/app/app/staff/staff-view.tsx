@@ -1,12 +1,17 @@
 "use client";
 
 import { Plus, UserPlus, Users } from "lucide-react";
-import { useId, useMemo, useOptimistic, useState, useTransition } from "react";
+import { Fragment, useId, useMemo, useOptimistic, useState, useTransition } from "react";
 import { toast } from "sonner";
 
 import { PageBody, PageHeader } from "@/components/dashboard/page-header";
 import { Button } from "@/components/ui/button";
-import { fromAvailabilityRows, type OpeningRange, weeklyHoursLabel } from "@/lib/hours";
+import {
+  fromAvailabilityRows,
+  type OpeningRange,
+  weeklyHoursLabel,
+  weeklyHoursParts,
+} from "@/lib/hours";
 import { timeOffLabel } from "@/lib/time-off";
 import { cn } from "@/lib/utils";
 import type { StaffFormInput, StaffFormValues } from "@/lib/validation/staff";
@@ -219,6 +224,24 @@ export function StaffAvatar({
 export const hoursLabel = (person: DashboardStaff) =>
   person.hours.length ? weeklyHoursLabel(fromAvailabilityRows(person.hours)) : "No hours set";
 
+/**
+ * Weekly hours that wrap between ranges, never inside one: each part
+ * ("Tue – Sat 09:00 – 18:00") stays on one line, the "·" leading the next.
+ */
+function HoursParts({ person }: { person: DashboardStaff }) {
+  const parts = person.hours.length ? weeklyHoursParts(fromAvailabilityRows(person.hours)) : [];
+  if (parts.length === 0) return <>No hours set</>;
+  return parts.map((part, i) => (
+    <Fragment key={part}>
+      {i > 0 && " "}
+      <span className="whitespace-nowrap">
+        {i > 0 && "· "}
+        {part}
+      </span>
+    </Fragment>
+  ));
+}
+
 function StaffCard({
   person,
   canEdit,
@@ -287,7 +310,7 @@ function StaffCard({
       </span>
       <span id={ids.details} className="flex flex-col gap-1">
         <span className="font-mono text-mono-sm text-muted-foreground tabular-nums">
-          {hoursLabel(person)}
+          <HoursParts person={person} />
         </span>
         {unbookable && (
           <span className="text-body-sm font-medium text-warning-text">

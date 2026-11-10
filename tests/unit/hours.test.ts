@@ -21,6 +21,8 @@ import {
   toAvailabilityRows,
   WEEK_ORDER,
   weekSchema,
+  weeklyHoursLabel,
+  weeklyHoursParts,
   weekOnGrid,
   weekSchemaFor,
 } from "@/lib/hours";
@@ -382,5 +384,30 @@ describe("moving hours onto a coarser grid", () => {
     expect(weekOnGrid(days, 15)).toBe(true);
     // Closed days don't count.
     expect(weekOnGrid(week({}), 30)).toBe(true);
+  });
+});
+
+describe("weekly hours on staff cards", () => {
+  it("splits into parts that wrap between ranges, not inside one", () => {
+    const aiko = week({
+      2: nineToSix,
+      3: nineToSix,
+      4: nineToSix,
+      5: nineToSix,
+      6: nineToSix,
+      0: [["09:00", "13:00"]],
+    });
+    expect(weeklyHoursParts(aiko)).toEqual(["Tue – Sat 09:00 – 18:00", "Sun 09:00 – 13:00"]);
+    expect(weeklyHoursLabel(aiko)).toBe("Tue – Sat 09:00 – 18:00 · Sun 09:00 – 13:00");
+  });
+
+  it("one run splits into its days and its hours", () => {
+    expect(weeklyHoursParts(tueToSun)).toEqual(["Tue – Sun", "09:00 – 18:00"]);
+    expect(weeklyHoursLabel(tueToSun)).toBe("Tue – Sun · 09:00 – 18:00");
+  });
+
+  it("no hours", () => {
+    expect(weeklyHoursParts(week({}))).toEqual([]);
+    expect(weeklyHoursLabel(week({}))).toBe("No hours set");
   });
 });
