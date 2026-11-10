@@ -40,6 +40,7 @@ async function inviter(): Promise<StaffActor> {
     businessId: business.id,
     role,
     businessName: business.name,
+    timezone: business.timezone,
     actorName: await myStaffName(claims, business.id),
   };
 }

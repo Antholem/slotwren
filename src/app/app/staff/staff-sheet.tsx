@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/sheet";
 import { Switch } from "@/components/ui/switch";
 import { useMediaQuery } from "@/hooks/use-media-query";
+import { formatInZone } from "@/lib/dates";
 import type { Result } from "@/lib/result";
 import { cn } from "@/lib/utils";
 import { type StaffFormInput, staffFormSchema, type StaffFormValues } from "@/lib/validation/staff";
@@ -47,8 +48,6 @@ type Props = {
   initialTab?: "details" | "hours" | "time-off";
   onSave: (raw: StaffFormInput, values: StaffFormValues) => void;
 };
-
-const dateFormat = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short" });
 
 export function StaffSheet(props: Props) {
   const desktop = useMediaQuery("(min-width: 768px)", true);
@@ -323,7 +322,9 @@ function EditForm(props: Props) {
           />
         </div>
 
-        {person && !person.isOwner && <SignInSection person={person} />}
+        {person && !person.isOwner && (
+          <SignInSection person={person} timezone={props.context.timezone} />
+        )}
       </form>
 
       <SheetFooter className="flex-row justify-end gap-3 border-t px-6 py-4">
@@ -344,7 +345,9 @@ function EditForm(props: Props) {
 }
 
 /** Whether they sign in: their pending invite, or a way to send one. */
-function SignInSection({ person }: { person: DashboardStaff }) {
+function SignInSection({ person, timezone }: { person: DashboardStaff; timezone: string }) {
+  // In the business timezone, so the server render and the browser agree.
+  const day = (date: Date) => formatInZone(date, timezone, "d MMM");
   const [pending, startTransition] = useTransition();
   const [email, setEmail] = useState(person.email ?? "");
   const [error, setError] = useState<string | null>(null);
@@ -406,10 +409,10 @@ function SignInSection({ person }: { person: DashboardStaff }) {
         <>
           <p className="text-body-sm text-muted-foreground">
             Sent to <span className="font-medium text-foreground">{person.invite.email}</span> on{" "}
-            {dateFormat.format(person.invite.sentAt)}.{" "}
+            {day(person.invite.sentAt)}.{" "}
             {person.invite.expired
               ? "It has expired."
-              : `It expires on ${dateFormat.format(person.invite.expiresAt)}.`}
+              : `It expires on ${day(person.invite.expiresAt)}.`}
           </p>
           <div className="flex flex-wrap gap-2">
             <Button

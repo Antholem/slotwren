@@ -4,6 +4,7 @@ import { z } from "zod";
 
 import { StaffInviteEmail } from "@/emails/staff-invite";
 import { env } from "@/env";
+import { formatInZone } from "@/lib/dates";
 import { err, ok, type Result } from "@/lib/result";
 import {
   INVITE_TTL_DAYS,
@@ -37,7 +38,12 @@ import type { Actor } from "./services";
  * Tested directly in tests/integration/staff.test.ts.
  */
 
-export type StaffActor = Actor & { businessName: string; actorName: string | null };
+export type StaffActor = Actor & {
+  businessName: string;
+  /** The business timezone: dates in emails read as the business reads them. */
+  timezone: string;
+  actorName: string | null;
+};
 
 const FORBIDDEN = "Only owners can change the team. Ask an owner to make this change.";
 const NOT_FOUND = "That person or invite no longer exists. Refresh to see the latest team.";
@@ -118,7 +124,7 @@ async function sendInviteEmail(
       inviterName: actor.actorName,
       inviteeName,
       acceptUrl: inviteUrl,
-      expiresOn: expiresAt.toLocaleDateString("en-GB", { day: "numeric", month: "long" }),
+      expiresOn: formatInZone(expiresAt, actor.timezone, "d MMMM"),
     }),
     logLines: [`Invite link for ${to}: ${inviteUrl}`],
   });

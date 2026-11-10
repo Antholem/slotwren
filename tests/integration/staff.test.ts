@@ -87,6 +87,7 @@ describe("staff and invites", () => {
       businessId,
       role,
       businessName: "Test Studio",
+      timezone: "Asia/Manila",
       actorName: "Mia",
     });
     ownerA = actor(ownerUserA, a.business.id, "owner");
