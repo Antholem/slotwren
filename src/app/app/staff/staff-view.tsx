@@ -236,10 +236,13 @@ function StaffCard({
   const ids = { verb: useId(), name: useId(), title: useId(), status: useId(), details: useId() };
   const verb = canEdit ? "Edit" : person.isMe ? "Open your schedule," : "View";
   const services = person.serviceIds.length;
+  // Someone who could take bookings but offers nothing can't be booked.
+  const unbookable = services === 0 && (person.active || person.invite !== null);
   const extras = [
-    `${services} ${services === 1 ? "service" : "services"}`,
+    unbookable ? null : `${services} ${services === 1 ? "service" : "services"}`,
     person.upcomingTimeOff ? `${person.upcomingTimeOff} time off planned` : null,
   ].filter(Boolean);
+  const subtitle = [person.title, person.isOwner ? "Owner" : null].filter(Boolean).join(" · ");
 
   return (
     <button
@@ -248,7 +251,9 @@ function StaffCard({
       disabled={person.pending}
       aria-haspopup="dialog"
       aria-labelledby={`${ids.verb} ${ids.name}`}
-      aria-describedby={`${ids.title} ${ids.status} ${ids.details}`}
+      aria-describedby={[subtitle || canEdit ? ids.title : null, ids.status, ids.details]
+        .filter(Boolean)
+        .join(" ")}
       className={cn(
         "flex h-full w-full flex-col gap-4 rounded-xl border border-l-4 bg-card p-5 text-left hover:bg-muted/40 focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none",
         EDGE[person.color],
@@ -265,10 +270,18 @@ function StaffCard({
           <span id={ids.name} className="block truncate text-title">
             {person.name}
           </span>
-          <span id={ids.title} className="block truncate text-body-sm text-muted-foreground">
-            {[person.title, person.isOwner ? "Owner" : null].filter(Boolean).join(" · ") ||
-              "No title"}
-          </span>
+          {subtitle ? (
+            <span id={ids.title} className="block truncate text-body-sm text-muted-foreground">
+              {subtitle}
+            </span>
+          ) : (
+            // Owners are nudged to fill it in (the card opens the editor); staff see nothing.
+            canEdit && (
+              <span id={ids.title} className="block truncate text-body-sm text-muted-foreground">
+                Add a title
+              </span>
+            )
+          )}
         </span>
         <StatusBadge person={person} id={ids.status} />
       </span>
@@ -276,7 +289,14 @@ function StaffCard({
         <span className="font-mono text-mono-sm text-muted-foreground tabular-nums">
           {hoursLabel(person)}
         </span>
-        <span className="text-body-sm text-muted-foreground">{extras.join(" · ")}</span>
+        {unbookable && (
+          <span className="text-body-sm font-medium text-warning-text">
+            {canEdit ? "Not bookable yet — assign a service" : "Not bookable yet"}
+          </span>
+        )}
+        {extras.length > 0 && (
+          <span className="text-body-sm text-muted-foreground">{extras.join(" · ")}</span>
+        )}
         {nextOff && (
           <span className="text-body-sm">
             Next time off:{" "}

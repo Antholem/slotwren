@@ -171,6 +171,10 @@ test("an invitee who signs in on another device still joins the team", async ({
   await dialog.getByRole("button", { name: "Send invite" }).click();
   await expect(dialog.getByRole("heading", { name: "Invite ready" })).toBeVisible();
   await dialog.getByRole("button", { name: "Done" }).click();
+  // No services yet: owners are told what to do about it.
+  const patCard = page.getByRole("button", { name: "Edit Pat" });
+  await expect(patCard).toContainText("Not bookable yet — assign a service");
+  await expect(patCard).toContainText("Add a title");
 
   // A different browser, no invite link: just signing in with that email.
   const phoneContext = await browser.newContext();
@@ -189,9 +193,12 @@ test("an invitee who signs in on another device still joins the team", async ({
   await phone.getByRole("button", { name: `Accept and join ${fixture.business.name}` }).click();
   await expect(phone).toHaveURL(/\/app$/);
   await phone.goto("/app/staff");
-  await expect(phone.getByRole("button", { name: "Open your schedule, Pat" })).toContainText(
-    "Active",
-  );
+  const ownCard = phone.getByRole("button", { name: "Open your schedule, Pat" });
+  await expect(ownCard).toContainText("Active");
+  // Staff see the fact, not the owner's to-do, and no title prompt.
+  await expect(ownCard).toContainText("Not bookable yet");
+  await expect(ownCard).not.toContainText("assign a service");
+  await expect(ownCard).not.toContainText("Add a title");
   expect(errors).toEqual([]);
   await phoneContext.close();
 });
