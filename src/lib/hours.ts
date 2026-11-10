@@ -27,9 +27,6 @@ export function timeOptions(intervalMin: number): string[] {
   return Array.from({ length: (24 * 60) / intervalMin }, (_, i) => timeOf(i * intervalMin));
 }
 
-/** "00:00", "00:30", … "23:30" */
-export const HALF_HOURS: string[] = timeOptions(30);
-
 export type TimeRange = { start: string; end: string };
 export type DayHours = { weekday: number; open: boolean; ranges: TimeRange[] };
 

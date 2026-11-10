@@ -39,12 +39,6 @@ export const getDashboardContext = cache(async (): Promise<DashboardContext> => 
   return { user, claims, business, role: business.role, businesses };
 });
 
-/** The dashboard context for writes that only owners may make. */
-export async function getOwnerContext() {
-  const context = await getDashboardContext();
-  return context.role === "owner" ? context : null;
-}
-
 /** Remember which business the dashboard shows (switcher, accepting an invite). */
 export async function setCurrentBusiness(businessId: string) {
   (await cookies()).set(CURRENT_BUSINESS_COOKIE, businessId, {

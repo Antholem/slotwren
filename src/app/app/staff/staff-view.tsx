@@ -172,7 +172,7 @@ export function StaffView({ staff, services, canEdit, ...schedule }: Props) {
   );
 }
 
-export function statusOf(person: DashboardStaff): "active" | "invited" | "inactive" {
+function statusOf(person: DashboardStaff): "active" | "invited" | "inactive" {
   if (person.invite) return "invited";
   return person.active ? "active" : "inactive";
 }
