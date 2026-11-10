@@ -18,6 +18,7 @@ import { isUniqueViolation, pgError } from "@/server/db/errors";
 import { staffNameFor } from "@/server/db/queries/onboarding";
 import {
   acceptInvite as acceptInviteRow,
+  acceptMyInvite as acceptMyInviteRow,
   type AcceptOutcome,
   createStaff,
   emailOnTeam,
@@ -251,19 +252,41 @@ const ACCEPT_MESSAGES: Record<Exclude<AcceptOutcome, "accepted" | "already_membe
   not_signed_in: "Sign in to accept this invite.",
 };
 
-/** Accept an invite as the signed-in user (private.accept_staff_invite). */
-export async function acceptInvite(
-  claims: RlsClaims,
-  token: unknown,
-): Promise<Result<{ businessId: string }, Exclude<AcceptOutcome, "accepted" | "already_member">>> {
-  const parsed = z.string().min(20).max(200).safeParse(token);
-  if (!parsed.success) return err("invalid", ACCEPT_MESSAGES.invalid);
-  const { outcome, businessId } = await acceptInviteRow(claims, parsed.data);
+type AcceptResult = Result<
+  { businessId: string },
+  Exclude<AcceptOutcome, "accepted" | "already_member">
+>;
+
+function acceptResult({
+  outcome,
+  businessId,
+}: {
+  outcome: AcceptOutcome;
+  businessId: string | null;
+}): AcceptResult {
   if ((outcome === "accepted" || outcome === "already_member") && businessId) {
     return ok({ businessId });
   }
   const code = outcome as keyof typeof ACCEPT_MESSAGES;
   return err(code, ACCEPT_MESSAGES[code]);
+}
+
+/** Accept an invite from its link, as the signed-in user (private.accept_staff_invite). */
+export async function acceptInvite(claims: RlsClaims, token: unknown): Promise<AcceptResult> {
+  const parsed = z.string().min(20).max(200).safeParse(token);
+  if (!parsed.success) return err("invalid", ACCEPT_MESSAGES.invalid);
+  return acceptResult(await acceptInviteRow(claims, parsed.data));
+}
+
+/**
+ * Accept an invite without its link (signed in on another device), by id.
+ * Only invites sent to the signed-in user's own email can be accepted this
+ * way (private.accept_my_staff_invite).
+ */
+export async function acceptMyInvite(claims: RlsClaims, inviteId: unknown): Promise<AcceptResult> {
+  const parsed = idSchema.safeParse(inviteId);
+  if (!parsed.success) return err("invalid", ACCEPT_MESSAGES.invalid);
+  return acceptResult(await acceptMyInviteRow(claims, parsed.data));
 }
 
 export { ACCEPT_MESSAGES };

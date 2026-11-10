@@ -92,6 +92,13 @@
       "when": 1794315812005,
       "tag": "20261110130331_booking_guards",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1794317625183,
+      "tag": "20261110133345_invites_by_email",
+      "breakpoints": true
     }
   ]
 }

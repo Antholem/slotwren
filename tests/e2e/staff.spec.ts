@@ -141,3 +141,43 @@ test("an owner revokes a pending invite and the link stops working", async ({ pa
   ).toBeVisible();
   await other.close();
 });
+
+test("an invitee who signs in on another device still joins the team", async ({
+  page,
+  browser,
+}) => {
+  test.setTimeout(120_000);
+  const { fixture } = await businesses.signInWithBusiness(page, "owner", "device");
+  await page.goto("/app/staff");
+  await page.getByRole("button", { name: "Invite staff" }).click();
+  const dialog = page.getByRole("dialog");
+  const email = uniqueEmail("phone");
+  await dialog.getByLabel("Email").fill(email);
+  await dialog.getByLabel("Name").fill("Pat");
+  await dialog.getByRole("button", { name: "Send invite" }).click();
+  await expect(dialog.getByRole("heading", { name: "Invite ready" })).toBeVisible();
+  await dialog.getByRole("button", { name: "Done" }).click();
+
+  // A different browser, no invite link: just signing in with that email.
+  const phoneContext = await browser.newContext();
+  const phone = await phoneContext.newPage();
+  const errors = collectConsoleErrors(phone);
+  await signInWithMagicLink(phone, email);
+  await expect(phone).toHaveURL(/\/invite$/);
+  await expect(
+    phone.getByRole("heading", {
+      level: 1,
+      name: `You've been invited to join ${fixture.business.name}`,
+    }),
+  ).toBeVisible();
+  await expect(phone.getByRole("link", { name: "Set up my own business instead" })).toBeVisible();
+  await expectNoAxeViolations(phone);
+  await phone.getByRole("button", { name: `Accept and join ${fixture.business.name}` }).click();
+  await expect(phone).toHaveURL(/\/app$/);
+  await phone.goto("/app/staff");
+  await expect(phone.getByRole("button", { name: "Open your schedule, Pat" })).toContainText(
+    "Active",
+  );
+  expect(errors).toEqual([]);
+  await phoneContext.close();
+});

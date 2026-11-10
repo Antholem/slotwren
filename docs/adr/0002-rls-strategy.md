@@ -99,6 +99,12 @@ from `src/server/db/queries/public/` and `queries/system/`.
   checks expiry, single use and that the signed-in email matches, then creates a
   **staff** membership, links and switches on the staff row, and marks the invite used.
   Invites never make owners.
+- Someone who signs in on another device loses the invite link. For them,
+  `private.my_pending_invites()` lists pending invites sent to their own (verified) email
+  and `private.accept_my_staff_invite(id)` accepts one by id: both run the same checks
+  through `private.claim_staff_invite()`, which users can't call directly. An invite id is
+  worthless to anyone but the invitee (migration `20261110133345_invites_by_email.sql`).
+  Onboarding sends new users with a pending invite to `/invite` before the wizard.
 - Realtime (dashboard live bookings) uses these same policies when it's added.
 - Staff can read `businesses.stripe_customer_id`: column grants can't vary by
   role-in-business. It's an identifier, not a secret, and it never reaches public pages.

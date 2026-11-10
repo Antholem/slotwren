@@ -7,6 +7,7 @@ import { INVITE_TTL_DAYS } from "@/lib/validation/staff";
 import type { RlsClaims } from "@/server/db/client";
 import {
   acceptInvite,
+  acceptMyInvite,
   inviteExistingStaff,
   inviteStaff,
   resendInvite,
@@ -14,7 +15,7 @@ import {
   saveStaff,
   type StaffActor,
 } from "@/server/catalog/staff";
-import { listStaff } from "@/server/db/queries/staff";
+import { listMyPendingInvites, listStaff } from "@/server/db/queries/staff";
 import * as schema from "@/server/db/schema";
 
 import { testUsers } from "../support/auth";
@@ -398,6 +399,83 @@ describe("staff and invites", () => {
     it("can't be called by the anon role", async () => {
       const [row] = await db.execute<{ allowed: boolean }>(
         sql`select has_function_privilege('anon', 'private.accept_staff_invite(text)', 'execute') as allowed`,
+      );
+      expect(row?.allowed).toBe(false);
+    });
+  });
+
+  // Signed in on another device: no invite link, just the right email.
+  describe("invites by email, without the link", () => {
+    let phoneUser: RlsClaims & { email: string };
+    let inviteId: string;
+
+    beforeAll(async () => {
+      phoneUser = await users.create("team-phone");
+      const created = await inviteStaff(ownerB, {
+        email: phoneUser.email.toUpperCase(), // emails match case-insensitively
+        name: "Pat",
+        serviceIds: [],
+      });
+      expect(created.ok).toBe(true);
+      const [row] = await db
+        .select({ id: schema.staffInvites.id })
+        .from(schema.staffInvites)
+        .where(eq(sql`lower(${schema.staffInvites.email})`, phoneUser.email.toLowerCase()));
+      inviteId = row!.id;
+    });
+
+    it("lists only invites sent to the signed-in user's own email", async () => {
+      const mine = await listMyPendingInvites(phoneUser);
+      expect(mine).toEqual([
+        expect.objectContaining({ inviteId, businessName: b.business.name, staffName: "Pat" }),
+      ]);
+      expect(await listMyPendingInvites(stranger)).toEqual([]);
+    });
+
+    it("refuses someone else's invite, even with its id", async () => {
+      const result = await acceptMyInvite(stranger, inviteId);
+      expect(result).toMatchObject({ ok: false, error: { code: "wrong_account" } });
+      expect(await acceptMyInvite(stranger, "not-a-uuid")).toMatchObject({
+        ok: false,
+        error: { code: "invalid" },
+      });
+    });
+
+    it("accepts by id for the invitee, as staff", async () => {
+      const result = await acceptMyInvite(phoneUser, inviteId);
+      expect(result).toEqual({ ok: true, data: { businessId: b.business.id } });
+      const [membership] = await db
+        .select({ role: schema.memberships.role })
+        .from(schema.memberships)
+        .where(
+          and(
+            eq(schema.memberships.businessId, b.business.id),
+            eq(schema.memberships.userId, phoneUser.sub),
+          ),
+        );
+      expect(membership?.role).toBe("staff");
+      expect(await listMyPendingInvites(phoneUser)).toEqual([]);
+    });
+
+    it("leaves expired invites out", async () => {
+      const late = await users.create("team-late");
+      await inviteStaff(ownerB, { email: late.email, name: "Late", serviceIds: [] });
+      await db
+        .update(schema.staffInvites)
+        .set({ expiresAt: new Date(Date.now() - 1000) })
+        .where(eq(schema.staffInvites.email, late.email));
+      expect(await listMyPendingInvites(late)).toEqual([]);
+    });
+
+    it("can't be called by the anon role", async () => {
+      for (const fn of ["private.accept_my_staff_invite(uuid)", "private.my_pending_invites()"]) {
+        const [row] = await db.execute<{ allowed: boolean }>(
+          sql`select has_function_privilege('anon', ${fn}, 'execute') as allowed`,
+        );
+        expect(row?.allowed, fn).toBe(false);
+      }
+      const [row] = await db.execute<{ allowed: boolean }>(
+        sql`select has_function_privilege('authenticated', 'private.claim_staff_invite(public.staff_invites, uuid)', 'execute') as allowed`,
       );
       expect(row?.allowed).toBe(false);
     });

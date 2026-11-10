@@ -450,3 +450,44 @@ export async function myStaffName(claims: RlsClaims, businessId: string): Promis
   );
   return row?.name ?? null;
 }
+
+export type MyPendingInvite = {
+  inviteId: string;
+  businessName: string;
+  logoUrl: string | null;
+  staffName: string;
+  expiresAt: Date;
+};
+
+/** Pending invites sent to the signed-in user's own email (private.my_pending_invites). */
+export async function listMyPendingInvites(claims: RlsClaims): Promise<MyPendingInvite[]> {
+  const rows = await withRls(claims, (tx) =>
+    tx.execute<{
+      invite_id: string;
+      business_name: string;
+      logo_url: string | null;
+      staff_name: string;
+      expires_at: string | Date;
+    }>(sql`select * from private.my_pending_invites()`),
+  );
+  return rows.map((row) => ({
+    inviteId: row.invite_id,
+    businessName: row.business_name,
+    logoUrl: row.logo_url,
+    staffName: row.staff_name,
+    expiresAt: new Date(row.expires_at),
+  }));
+}
+
+/** private.accept_my_staff_invite(): accept by id, for invites sent to the user's own email. */
+export async function acceptMyInvite(
+  claims: RlsClaims,
+  inviteId: string,
+): Promise<{ outcome: AcceptOutcome; businessId: string | null }> {
+  const [row] = await withRls(claims, (tx) =>
+    tx.execute<{ result: { outcome: AcceptOutcome; business_id?: string } }>(
+      sql`select private.accept_my_staff_invite(${inviteId}::uuid) as result`,
+    ),
+  );
+  return { outcome: row!.result.outcome, businessId: row!.result.business_id ?? null };
+}
