@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, eq } from "drizzle-orm";
+import { and, eq, gt, isNull } from "drizzle-orm";
 
 import { tenantLookup } from "../../admin";
 import { businesses, staff, staffInvites } from "../../schema";
@@ -58,5 +58,29 @@ export const getInvitePreview = tenantLookup(
       status: acceptedAt ? "accepted" : row.expiresAt <= now ? "expired" : "pending",
     };
     return preview;
+  },
+);
+
+/**
+ * Who a pending, unexpired invite was sent to, so the sign-in page can email
+ * the invitee a sign-in link without them typing (or seeing) the address.
+ * SERVER ONLY: the address is never returned to the browser; callers show
+ * maskEmail() of it at most.
+ */
+export const getInviteRecipient = tenantLookup(
+  "byInviteTokenHash",
+  async (db, { tokenHash, now }: { tokenHash: string; now: Date }) => {
+    const [row] = await db
+      .select({ email: staffInvites.email })
+      .from(staffInvites)
+      .where(
+        and(
+          eq(staffInvites.tokenHash, tokenHash),
+          isNull(staffInvites.acceptedAt),
+          gt(staffInvites.expiresAt, now),
+        ),
+      )
+      .limit(1);
+    return row?.email ?? null;
   },
 );

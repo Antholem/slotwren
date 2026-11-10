@@ -8,6 +8,7 @@ import {
   uniqueEmail,
 } from "../support/e2e";
 import { liveBusinesses } from "../support/e2e-business";
+import { waitForSignInLink } from "../support/mailpit";
 
 // Needs the local Supabase stack (Auth, Mailpit) and DATABASE_URL (.env.local).
 
@@ -61,7 +62,20 @@ test("invite → accept in a second browser → staff sees read-only Services", 
   await expectNoAxeViolations(sam);
   await sam.getByRole("link", { name: "Sign in to accept" }).click();
   await expect(sam).toHaveURL(/\/sign-in\?next=/);
-  await signInWithMagicLink(sam, samEmail, { onCurrentPage: true });
+
+  // The sign-in page knows the invite: no typing, and the address stays masked.
+  await expect(
+    sam.getByRole("heading", { level: 1, name: `You've been invited to join ${businessName}` }),
+  ).toBeVisible();
+  await expect(sam.getByText("e••@example.com")).toBeVisible();
+  await expect(sam.getByText(samEmail)).toHaveCount(0);
+  await expectNoAxeViolations(sam);
+  await sam.getByRole("button", { name: "Email me a sign-in link" }).click();
+  await expect(sam.getByRole("heading", { name: "Check your email" })).toBeVisible({
+    timeout: 20_000,
+  });
+  await expect(sam.getByText(samEmail)).toHaveCount(0);
+  await sam.goto(onThisServer(await waitForSignInLink(samEmail)));
 
   // Back on the invite after signing in
   await expect(sam).toHaveURL(/\/invite\//);

@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { getInvitePreview } from "@/server/db/queries/public/invites";
+import { getInvitePreview, getInviteRecipient } from "@/server/db/queries/public/invites";
 import * as schema from "@/server/db/schema";
 
 import { connectTestDb, createFixtureBusiness } from "../support/db";
@@ -86,5 +86,14 @@ describe("public data", () => {
 
   it("an unknown token reveals nothing", async () => {
     expect(await getInvitePreview({ tokenHash: "0".repeat(64), now: new Date() })).toBeNull();
+  });
+
+  // The one public query that returns an address: server-only, used to email
+  // the invitee their sign-in link. The browser gets maskEmail() of it.
+  it("the invite's recipient is found only for a live, pending invite", async () => {
+    expect(await getInviteRecipient({ tokenHash, now: new Date() })).toBe(inviteEmail);
+    expect(await getInviteRecipient({ tokenHash: "0".repeat(64), now: new Date() })).toBeNull();
+    const later = new Date(Date.now() + 2 * 86_400_000); // past expiry
+    expect(await getInviteRecipient({ tokenHash, now: later })).toBeNull();
   });
 });

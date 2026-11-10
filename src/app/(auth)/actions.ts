@@ -7,6 +7,8 @@ import { z } from "zod";
 import { env } from "@/env";
 import { err, ok, type Result } from "@/lib/result";
 import { rememberNextPath } from "@/server/auth/next-cookie";
+import { hashToken } from "@/server/booking/tokens";
+import { getInviteRecipient, maskEmail } from "@/server/db/queries/public/invites";
 import { createSupabaseServerClient } from "@/server/supabase/server";
 
 const callbackUrl = () => new URL("/auth/callback", env.NEXT_PUBLIC_APP_URL).toString();
@@ -16,6 +18,12 @@ const magicLinkSchema = z.object({
   next: z.string().optional(),
 });
 
+/** "Email me a sign-in link" from an invite: the address comes from the invite. */
+const inviteTokenSchema = z.string().min(20).max(200);
+
+const INVITE_GONE =
+  "This invite isn't valid any more. Ask the person who invited you to send it again.";
+
 export type MagicLinkState = Result<{ email: string }, MagicLinkError> | null;
 type MagicLinkError = "invalid_input" | "rate_limited" | "send_failed";
 
@@ -23,8 +31,22 @@ export async function sendMagicLink(
   _previous: MagicLinkState,
   formData: FormData,
 ): Promise<MagicLinkState> {
+  // Invited: send the link to the address the invite went to. The browser
+  // only ever sees it masked, so a forwarded link doesn't reveal it.
+  const inviteToken = formData.get("invite");
+  let shownEmail: string | null = null;
+  let inviteEmail: string | null = null;
+  if (inviteToken !== null) {
+    const token = inviteTokenSchema.safeParse(inviteToken);
+    inviteEmail = token.success
+      ? await getInviteRecipient({ tokenHash: hashToken(token.data), now: new Date() })
+      : null;
+    if (!inviteEmail) return err("invalid_input", INVITE_GONE);
+    shownEmail = maskEmail(inviteEmail);
+  }
+
   const parsed = magicLinkSchema.safeParse({
-    email: formData.get("email"),
+    email: inviteEmail ?? formData.get("email"),
     next: formData.get("next") ?? undefined,
   });
   if (!parsed.success) {
@@ -48,7 +70,7 @@ export async function sendMagicLink(
   }
 
   await rememberNextPath(next);
-  return ok({ email });
+  return ok({ email: shownEmail ?? email });
 }
 
 export async function signInWithGoogle(formData: FormData) {

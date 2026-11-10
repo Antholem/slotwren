@@ -14,16 +14,29 @@ import { type MagicLinkState, sendMagicLink, signInWithGoogle } from "../actions
 
 export type SignInNotice = { tone: "error" | "info"; message: string };
 
-type Props = { googleEnabled: boolean; next?: string; notice: SignInNotice | null };
+/** Arrived from an invite: the token, and the address it went to, masked. */
+export type SignInInvite = { token: string; businessName: string; emailHint: string };
 
-export function SignInForm({ googleEnabled, next, notice }: Props) {
+type Props = {
+  googleEnabled: boolean;
+  next?: string;
+  notice: SignInNotice | null;
+  invite?: SignInInvite | null;
+};
+
+export function SignInForm({ googleEnabled, next, notice, invite = null }: Props) {
   // Bumping the key resets the magic-link form for "Use a different email".
   const [attempt, setAttempt] = useState(0);
 
   return (
     <div className="mt-6 flex flex-col gap-6">
       {notice && attempt === 0 && <Notice notice={notice} />}
-      <MagicLinkForm key={attempt} next={next} onReset={() => setAttempt((n) => n + 1)} />
+      <MagicLinkForm
+        key={attempt}
+        next={next}
+        invite={attempt === 0 ? invite : null}
+        onReset={() => setAttempt((n) => n + 1)}
+      />
       {googleEnabled && (
         <>
           <div className="flex items-center gap-3 text-caption text-muted-foreground">
@@ -41,7 +54,15 @@ export function SignInForm({ googleEnabled, next, notice }: Props) {
   );
 }
 
-function MagicLinkForm({ next, onReset }: { next?: string; onReset: () => void }) {
+function MagicLinkForm({
+  next,
+  invite,
+  onReset,
+}: {
+  next?: string;
+  invite: SignInInvite | null;
+  onReset: () => void;
+}) {
   const [state, formAction, pending] = useActionState<MagicLinkState, FormData>(
     sendMagicLink,
     null,
@@ -53,7 +74,33 @@ function MagicLinkForm({ next, onReset }: { next?: string; onReset: () => void }
   if (state?.ok) return <CheckYourEmail email={state.data.email} onReset={onReset} />;
 
   const error = state?.ok === false ? state.error : null;
-  const fieldError = error?.code === "invalid_input";
+  const fieldError = error?.code === "invalid_input" && !invite;
+
+  const submit = (
+    <Button type="submit" disabled={pending} className="h-11 w-full text-label">
+      {pending ? <Loader2 aria-hidden className="animate-spin" /> : <Mail aria-hidden />}
+      {pending ? "Sending link…" : "Email me a sign-in link"}
+    </Button>
+  );
+
+  // Invited: the link goes to the invite's address, without typing it.
+  if (invite) {
+    return (
+      <form action={formAction} noValidate className="flex flex-col gap-4">
+        {next && <input type="hidden" name="next" value={next} />}
+        <input type="hidden" name="invite" value={invite.token} />
+        {error && <Notice notice={{ tone: "error", message: error.message }} />}
+        <div className="flex flex-col gap-1 rounded-lg border bg-background px-4 py-3">
+          <span className="text-caption text-muted-foreground">Email</span>
+          <span className="text-body font-medium">{invite.emailHint}</span>
+        </div>
+        {submit}
+        <Button type="button" variant="ghost" onClick={onReset} className="h-11 text-label">
+          Use a different email
+        </Button>
+      </form>
+    );
+  }
 
   return (
     <form action={formAction} noValidate className="flex flex-col gap-4">
@@ -83,10 +130,7 @@ function MagicLinkForm({ next, onReset }: { next?: string; onReset: () => void }
           </p>
         )}
       </div>
-      <Button type="submit" disabled={pending} className="h-11 w-full text-label">
-        {pending ? <Loader2 aria-hidden className="animate-spin" /> : <Mail aria-hidden />}
-        {pending ? "Sending link…" : "Email me a sign-in link"}
-      </Button>
+      {submit}
     </form>
   );
 }
