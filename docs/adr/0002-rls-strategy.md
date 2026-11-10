@@ -54,6 +54,28 @@ Postgres evaluates once per query, and the definer rights avoid recursing into t
   free-plan values instead.
 - Tables written only by the server (AI, subscriptions, `stripe_events`) have their write
   grants revoked.
+- `bookings` UPDATE is limited by column grants: nobody signed in changes a booking's
+  business, code, source, manage-token hash, creator or AI conversation. Column grants
+  can't tell owners from staff, so a trigger (`bookings_guard_price`, SQLSTATE 42501)
+  lets only owners change `price_cents` (migration `20261110130331_booking_guards.sql`).
+- `businesses.ai_enabled` is an owner **preference**, granted like the other settings. It
+  is not an entitlement: an owner on the Free plan can switch it on. Before the AI runs
+  (Phase 4) and wherever plans are enforced (Phase 5), the server checks the plan and
+  subscription itself; it never treats `ai_enabled` as proof of Pro.
+
+**Audit trail from the session.** `booking_events` rows written by a signed-in member get
+`actor = 'staff'` and `actor_user_id = auth.uid()` from a trigger
+(`booking_events_stamp_actor`), whatever the insert says, so nobody can record an action
+as the customer or as a colleague. Paths without a user (public page, AI, jobs) write as
+`adminDb` and set the actor themselves.
+
+**Links stay inside a tenant.** Every reference between tenant tables is a composite
+`(id, business_id)` foreign key: bookings to service, staff, customer and AI conversation;
+staff_services, availability_rules, time_off, staff_invites to their staff and services;
+booking_events to bookings; ai_messages and handoff_requests to conversations;
+ai_conversations and handoff_requests to customers. Optional links use
+`ON DELETE SET NULL (column)` so only the link is cleared, never `business_id`
+(migration `20261110124827_tenant_links.sql`).
 
 **Invariants in triggers.** A business always keeps one owner (`memberships_keep_an_owner`,
 SQLSTATE 23514). This only applies to signed-in users, so cascading deletes of a business
