@@ -65,9 +65,9 @@ test("invite → accept in a second browser → staff sees read-only Services", 
 
   // The sign-in page knows the invite: no typing, and the address stays masked.
   await expect(
-    sam.getByRole("heading", { level: 1, name: `You've been invited to join ${businessName}` }),
+    sam.getByRole("heading", { level: 1, name: `You’ve been invited to join ${businessName}` }),
   ).toBeVisible();
-  await expect(sam.getByText("e••@example.com")).toBeVisible();
+  await expect(sam.getByRole("main").getByText("e••@example.com")).toBeVisible();
   await expect(sam.getByText(samEmail)).toHaveCount(0);
   await expectNoAxeViolations(sam);
   await sam.getByRole("button", { name: "Email me a sign-in link" }).click();
@@ -185,7 +185,7 @@ test("an invitee who signs in on another device still joins the team", async ({
   await expect(
     phone.getByRole("heading", {
       level: 1,
-      name: `You've been invited to join ${fixture.business.name}`,
+      name: `You’ve been invited to join ${fixture.business.name}`,
     }),
   ).toBeVisible();
   await expect(phone.getByRole("link", { name: "Set up my own business instead" })).toBeVisible();

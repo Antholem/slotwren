@@ -13,7 +13,7 @@ import { listMyPendingInvites } from "@/server/db/queries/staff";
 import { AcceptMyInvite } from "./accept-my-invite";
 
 export const metadata: Metadata = {
-  title: "You've been invited",
+  title: "You’ve been invited",
   robots: { index: false, follow: false },
 };
 
@@ -46,8 +46,8 @@ async function MyInvites() {
       <div className="flex flex-col gap-2">
         <h1 className="text-heading">
           {invites.length === 1
-            ? `You've been invited to join ${invites[0]!.businessName}`
-            : "You've been invited"}
+            ? `You’ve been invited to join ${invites[0]!.businessName}`
+            : "You’ve been invited"}
         </h1>
         <p className="text-body text-muted-foreground">
           Signed in as <span className="font-medium text-foreground">{user.email}</span>. Join as
