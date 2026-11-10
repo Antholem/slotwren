@@ -26,13 +26,14 @@ async function Service() {
   const service = state!.service;
   return (
     <ServiceForm
+      currency={state!.business.currency}
       currencySymbol={currencySymbol(state!.business.currency)}
       initial={
         service
           ? {
               name: service.name,
               durationMin: service.durationMin,
-              price: centsToInput(service.priceCents),
+              price: centsToInput(service.priceCents, state!.business.currency),
               bufferAfterMin: service.bufferAfterMin,
               description: service.description ?? "",
             }

@@ -2,7 +2,12 @@ import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import type { ServiceFormInput } from "@/lib/validation/services";
-import { type Actor, removeService, restoreService, saveService } from "@/server/catalog/services";
+import {
+  removeService,
+  restoreService,
+  saveService,
+  type ServiceActor,
+} from "@/server/catalog/services";
 import { listServices } from "@/server/db/queries/services";
 import * as schema from "@/server/db/schema";
 
@@ -18,9 +23,9 @@ describe("services actions", () => {
   const users = testUsers();
   let a: Awaited<ReturnType<typeof createFixtureBusiness>>;
   let b: Awaited<ReturnType<typeof createFixtureBusiness>>;
-  let owner: Actor;
-  let staffMember: Actor;
-  let ownerOfB: Actor;
+  let owner: ServiceActor;
+  let staffMember: ServiceActor;
+  let ownerOfB: ServiceActor;
 
   const input = (overrides: Partial<ServiceFormInput> = {}): ServiceFormInput => ({
     name: "Scalp Treatment",
@@ -47,9 +52,9 @@ describe("services actions", () => {
       { businessId: a.business.id, userId: staffUser.sub, role: "staff" },
       { businessId: b.business.id, userId: ownerBUser.sub, role: "owner" },
     ]);
-    owner = { claims: ownerUser, businessId: a.business.id, role: "owner" };
-    staffMember = { claims: staffUser, businessId: a.business.id, role: "staff" };
-    ownerOfB = { claims: ownerBUser, businessId: b.business.id, role: "owner" };
+    owner = { claims: ownerUser, businessId: a.business.id, role: "owner", currency: "USD" };
+    staffMember = { claims: staffUser, businessId: a.business.id, role: "staff", currency: "USD" };
+    ownerOfB = { claims: ownerBUser, businessId: b.business.id, role: "owner", currency: "USD" };
   });
 
   afterAll(async () => {
@@ -80,6 +85,21 @@ describe("services actions", () => {
     });
     const listed = (await listServices(owner.claims, a.business.id)).find((s) => s.id === created);
     expect(listed?.staffIds).toEqual([a.staff.id]);
+  });
+
+  it("reads prices the way the business's currency writes them", async () => {
+    const euro = { ...owner, currency: "EUR" };
+    const comma = await saveService(euro, input({ name: "Euro cut", price: "35,50" }));
+    expect(comma.ok).toBe(true);
+    expect((await serviceRow(comma.ok ? comma.data.id : ""))?.priceCents).toBe(3550);
+
+    // "1,234" is 1234 dollars, but three decimals in euros: refused, not guessed.
+    expect(await saveService(euro, input({ price: "1,234" }))).toMatchObject({
+      ok: false,
+      error: { code: "invalid_input", message: "Enter a price like 35 or 35,50." },
+    });
+    const dollars = await saveService(owner, input({ name: "Dollar cut", price: "1,234" }));
+    expect((await serviceRow(dollars.ok ? dollars.data.id : ""))?.priceCents).toBe(123400);
   });
 
   it("an owner edits it, replacing its staff", async () => {

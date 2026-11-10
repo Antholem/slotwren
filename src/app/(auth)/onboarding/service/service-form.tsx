@@ -18,7 +18,7 @@ import {
   BUFFER_OPTIONS,
   DURATION_OPTIONS,
   type ServiceInput,
-  serviceSchema,
+  serviceSchemaFor,
   type ServiceValues,
 } from "@/lib/validation/onboarding";
 
@@ -26,6 +26,7 @@ import { saveServiceAction } from "../actions";
 import { useStepSubmit } from "../use-step-submit";
 
 type Props = {
+  currency: string;
   currencySymbol: string;
   initial: ServiceInput;
   preview: PreviewProps;
@@ -34,9 +35,9 @@ type Props = {
 const durationLabel = (min: number) =>
   min < 60 || min % 60 !== 0 ? `${min} min` : `${min / 60} h`;
 
-export function ServiceForm({ currencySymbol, initial, preview }: Props) {
+export function ServiceForm({ currency, currencySymbol, initial, preview }: Props) {
   const form = useForm<ServiceInput, unknown, ServiceValues>({
-    resolver: zodResolver(serviceSchema),
+    resolver: zodResolver(serviceSchemaFor(currency)),
     defaultValues: initial,
     mode: "onTouched",
   });
@@ -71,7 +72,7 @@ export function ServiceForm({ currencySymbol, initial, preview }: Props) {
           service={{
             name,
             durationMin: Number(durationMin) || null,
-            priceCents: price === "" ? null : parsePriceToCents(String(price)),
+            priceCents: price === "" ? null : parsePriceToCents(String(price), currency),
           }}
         />
       }

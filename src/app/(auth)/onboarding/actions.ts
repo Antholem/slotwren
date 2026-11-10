@@ -6,7 +6,12 @@ import { z } from "zod";
 
 import { err, ok, type Result } from "@/lib/result";
 import { slugSchema } from "@/lib/slug";
-import { basicsSchema, brandSchema, hoursSchema, serviceSchema } from "@/lib/validation/onboarding";
+import {
+  basicsSchema,
+  brandSchema,
+  hoursSchema,
+  serviceSchemaFor,
+} from "@/lib/validation/onboarding";
 import { requireUser, rlsClaimsFor } from "@/server/auth/session";
 import { isOwnLogoUrl, removeUnusedLogos } from "@/server/catalog/logo";
 import { isUniqueViolation } from "@/server/db/errors";
@@ -124,7 +129,7 @@ export async function saveServiceAction(input: unknown, rawIntent: unknown): Pro
   const claims = await signedIn();
   const intent = intentSchema.parse(rawIntent);
   const business = await requireSetupBusiness(claims);
-  const parsed = serviceSchema.safeParse(input);
+  const parsed = serviceSchemaFor(business.currency).safeParse(input);
   if (!parsed.success) return invalid(parsed.error);
 
   await saveFirstService(claims, business.id, parsed.data);

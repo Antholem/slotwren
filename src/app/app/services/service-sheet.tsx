@@ -29,7 +29,7 @@ import {
   BUFFER_CHOICES,
   DURATION_CHOICES,
   type ServiceFormInput,
-  serviceFormSchema,
+  serviceFormSchemaFor,
   type ServiceFormValues,
 } from "@/lib/validation/services";
 import type { DashboardService, StaffOption } from "@/server/db/queries/services";
@@ -53,7 +53,11 @@ type Props = {
   onRemove: (service: DashboardService) => void;
 };
 
-function initialValues(service: DashboardService | null, staff: StaffOption[]): ServiceFormInput {
+function initialValues(
+  service: DashboardService | null,
+  staff: StaffOption[],
+  currency: string,
+): ServiceFormInput {
   if (!service) {
     return {
       name: "",
@@ -71,7 +75,7 @@ function initialValues(service: DashboardService | null, staff: StaffOption[]): 
     name: service.name,
     description: service.description ?? "",
     durationMin: service.durationMin,
-    price: centsToInput(service.priceCents),
+    price: centsToInput(service.priceCents, currency),
     bufferBeforeMin: service.bufferBeforeMin,
     bufferAfterMin: service.bufferAfterMin,
     active: service.active,
@@ -180,10 +184,10 @@ function ReadOnly({
 }
 
 function EditForm(props: Props) {
-  const { service, staff, draft, serverError, currencySymbol, slotIntervalMin } = props;
+  const { service, staff, draft, serverError, currency, currencySymbol, slotIntervalMin } = props;
   const form = useForm<ServiceFormInput, unknown, ServiceFormValues>({
-    resolver: zodResolver(serviceFormSchema),
-    defaultValues: draft ?? initialValues(service, staff),
+    resolver: zodResolver(serviceFormSchemaFor(currency)),
+    defaultValues: draft ?? initialValues(service, staff, currency),
     mode: "onTouched",
   });
   const { register, control, formState, handleSubmit, getValues } = form;

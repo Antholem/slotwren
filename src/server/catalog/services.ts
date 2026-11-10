@@ -3,7 +3,7 @@ import "server-only";
 import { z } from "zod";
 
 import { err, ok, type Result } from "@/lib/result";
-import { serviceFormSchema } from "@/lib/validation/services";
+import { serviceFormSchemaFor } from "@/lib/validation/services";
 import type { RlsClaims } from "@/server/db/client";
 import { pgError } from "@/server/db/errors";
 import {
@@ -23,6 +23,9 @@ import {
 
 export type Actor = { claims: RlsClaims; businessId: string; role: "owner" | "staff" };
 
+/** Saving a service also needs the business's currency, to read the typed price. */
+export type ServiceActor = Actor & { currency: string };
+
 type SaveError = "forbidden" | "invalid_input" | "invalid_staff" | "not_found";
 
 const FORBIDDEN = "Only owners can change services. Ask an owner to make this change.";
@@ -30,7 +33,7 @@ const NOT_FOUND = "That service no longer exists. Refresh to see the latest list
 const idSchema = z.uuid();
 
 export async function saveService(
-  actor: Actor,
+  actor: ServiceActor,
   input: unknown,
   serviceId?: string,
 ): Promise<Result<{ id: string }, SaveError>> {
@@ -39,7 +42,7 @@ export async function saveService(
     return err("not_found", NOT_FOUND);
   }
 
-  const parsed = serviceFormSchema.safeParse(input);
+  const parsed = serviceFormSchemaFor(actor.currency).safeParse(input);
   if (!parsed.success) {
     const { fieldErrors } = z.flattenError(parsed.error);
     const first = Object.values(fieldErrors).flat()[0] as string | undefined;

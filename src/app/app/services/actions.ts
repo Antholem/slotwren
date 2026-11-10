@@ -3,7 +3,12 @@
 import { refresh } from "next/cache";
 
 import type { Result } from "@/lib/result";
-import { type Actor, removeService, restoreService, saveService } from "@/server/catalog/services";
+import {
+  removeService,
+  restoreService,
+  saveService,
+  type ServiceActor,
+} from "@/server/catalog/services";
 import { getDashboardContext } from "@/server/auth/dashboard";
 
 /*
@@ -12,9 +17,9 @@ import { getDashboardContext } from "@/server/auth/dashboard";
  * page on success so the optimistic list settles on the saved data.
  */
 
-async function actor(): Promise<Actor> {
+async function actor(): Promise<ServiceActor> {
   const { claims, business, role } = await getDashboardContext();
-  return { claims, businessId: business.id, role };
+  return { claims, businessId: business.id, role, currency: business.currency };
 }
 
 function settle<T extends Result<unknown, string>>(result: T): T {
