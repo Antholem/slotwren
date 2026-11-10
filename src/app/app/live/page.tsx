@@ -12,7 +12,7 @@ import { listBusinessHours } from "@/server/db/queries/dashboard";
 
 import { CopyLinkField, LinkActions, QrDownloads } from "./live-actions";
 
-export const metadata: Metadata = { title: "You're live" };
+export const metadata: Metadata = { title: "Your booking link" };
 
 /** Where onboarding ends (docs/design/setup-settings/2-you're-live), inside the dashboard shell. */
 export default function LivePage() {
@@ -60,12 +60,10 @@ async function Live() {
             <Check aria-hidden className="size-7 sm:size-8" strokeWidth={2.5} />
           </span>
           <div>
-            <h1 className="text-heading sm:text-display">
-              You&rsquo;re live. Customers can book now.
-            </h1>
+            <h1 className="text-heading sm:text-display">Your booking link is ready</h1>
             <p className="mt-2 text-body text-muted-foreground">
-              {business.name} takes bookings {when}. Share your link anywhere your customers already
-              are.
+              {business.name} is open {when}. Share your link anywhere your customers already are;
+              online booking on it opens soon.
             </p>
           </div>
         </header>

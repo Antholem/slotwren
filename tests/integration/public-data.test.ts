@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
+import { getPublicBusinessBySlug } from "@/server/db/queries/public/business";
 import { getInvitePreview, getInviteRecipient } from "@/server/db/queries/public/invites";
 import * as schema from "@/server/db/schema";
 
@@ -86,6 +87,26 @@ describe("public data", () => {
 
   it("an unknown token reveals nothing", async () => {
     expect(await getInvitePreview({ tokenHash: "0".repeat(64), now: new Date() })).toBeNull();
+  });
+
+  it("the booking page sees the business's public fields only, once it's live", async () => {
+    // Fixture businesses haven't finished onboarding: no public page yet.
+    expect(await getPublicBusinessBySlug(fixture.business.slug)).toBeNull();
+    await db
+      .update(schema.businesses)
+      .set({ onboardedAt: new Date() })
+      .where(eq(schema.businesses.id, fixture.business.id));
+
+    const business = await getPublicBusinessBySlug(fixture.business.slug);
+    expect(business).toEqual({
+      id: fixture.business.id,
+      slug: fixture.business.slug,
+      name: fixture.business.name,
+      logoUrl: null,
+      brandColor: fixture.business.brandColor,
+    });
+    expectNothingPrivate(business);
+    expect(await getPublicBusinessBySlug("no-such-business-here")).toBeNull();
   });
 
   // The one public query that returns an address: server-only, used to email

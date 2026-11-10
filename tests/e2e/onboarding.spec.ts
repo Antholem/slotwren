@@ -90,11 +90,11 @@ test("sign up, finish the wizard and see the booking link", async ({ page }) => 
   await expectNoAxeViolations(page);
   await submitTo(page, "Finish and go live", /\/app\/live$/);
 
-  // You're live, inside the dashboard shell
+  // The booking link, inside the dashboard shell (booking itself opens in Phase 2)
   await expect(
-    page.getByRole("heading", { level: 1, name: "You’re live. Customers can book now." }),
+    page.getByRole("heading", { level: 1, name: "Your booking link is ready" }),
   ).toBeVisible();
-  await expect(page.getByText(`${name} takes bookings Mon – Sat`)).toBeVisible();
+  await expect(page.getByText(`${name} is open Mon – Sat`)).toBeVisible();
   const link = page.getByLabel("Booking link", { exact: true });
   await expect(link).toHaveValue(new RegExp(`/b/${slug}$`));
   await page.getByRole("button", { name: "Copy link" }).click();

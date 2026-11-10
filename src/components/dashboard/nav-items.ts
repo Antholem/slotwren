@@ -45,6 +45,6 @@ export function isCurrent(item: NavItem, pathname: string) {
 
 /** The page title for the mobile header. */
 export function titleFor(pathname: string) {
-  if (pathname.startsWith("/app/live")) return "You're live";
+  if (pathname.startsWith("/app/live")) return "Booking link";
   return NAV_ITEMS.find((item) => isCurrent(item, pathname))?.label ?? "Dashboard";
 }
