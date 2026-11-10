@@ -1,6 +1,6 @@
 import "server-only";
 
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
 import { tenantLookup } from "../../admin";
 import { businesses, staff, staffInvites } from "../../schema";
@@ -43,7 +43,10 @@ export const getInvitePreview = tenantLookup(
       })
       .from(staffInvites)
       .innerJoin(businesses, eq(businesses.id, staffInvites.businessId))
-      .innerJoin(staff, eq(staff.id, staffInvites.staffId))
+      .innerJoin(
+        staff,
+        and(eq(staff.id, staffInvites.staffId), eq(staff.businessId, staffInvites.businessId)),
+      )
       .where(eq(staffInvites.tokenHash, tokenHash))
       .limit(1);
     if (!row) return null;

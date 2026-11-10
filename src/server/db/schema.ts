@@ -1,6 +1,5 @@
 import { sql } from "drizzle-orm";
 import {
-  type AnyPgColumn,
   boolean,
   char,
   check,
@@ -360,9 +359,9 @@ export const bookings = pgTable(
     createdByUserId: uuid("created_by_user_id").references(() => authUsers.id, {
       onDelete: "set null",
     }),
-    aiConversationId: uuid("ai_conversation_id").references((): AnyPgColumn => aiConversations.id, {
-      onDelete: "set null",
-    }),
+    // Composite FK (ai_conversation_id, business_id), ON DELETE SET NULL (ai_conversation_id):
+    // custom SQL migration "tenant_links" (Drizzle can't express the column list).
+    aiConversationId: uuid("ai_conversation_id"),
     cancelledAt: tstz("cancelled_at"),
     cancelledBy: actorEnum("cancelled_by"),
     cancelReason: text("cancel_reason"),
@@ -371,6 +370,7 @@ export const bookings = pgTable(
   },
   (t) => [
     unique("bookings_business_code").on(t.businessId, t.code),
+    unique("bookings_id_business").on(t.id, t.businessId), // target for composite FKs
     index().on(t.businessId, t.startsAt),
     index().on(t.staffId, t.startsAt),
     index().on(t.customerId),
@@ -401,16 +401,20 @@ export const bookingEvents = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     businessId: businessId(),
-    bookingId: uuid("booking_id")
-      .notNull()
-      .references(() => bookings.id, { onDelete: "cascade" }),
+    bookingId: uuid("booking_id").notNull(),
     type: bookingEventTypeEnum("type").notNull(),
     actor: actorEnum("actor").notNull(),
     actorUserId: uuid("actor_user_id").references(() => authUsers.id, { onDelete: "set null" }),
     data: jsonb("data").$type<Record<string, unknown>>(), // e.g. { from: { startsAt }, to: { startsAt } }
     createdAt: createdAt(),
   },
-  (t) => [index().on(t.bookingId, t.createdAt)],
+  (t) => [
+    index().on(t.bookingId, t.createdAt),
+    foreignKey({
+      columns: [t.bookingId, t.businessId],
+      foreignColumns: [bookings.id, bookings.businessId],
+    }).onDelete("cascade"),
+  ],
 );
 
 // ── AI receptionist ─────────────────────────────────────────────────────
@@ -433,7 +437,7 @@ export const aiConversations = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     businessId: businessId(),
-    customerId: uuid("customer_id").references(() => customers.id, { onDelete: "set null" }),
+    customerId: uuid("customer_id"), // composite FK, SET NULL: custom SQL migration
     visitorName: text("visitor_name"), // shown as "Visitor" when unknown
     visitorEmail: text("visitor_email"),
     channel: chatChannelEnum("channel").notNull(),
@@ -441,7 +445,10 @@ export const aiConversations = pgTable(
     startedAt: tstz("started_at").defaultNow().notNull(),
     lastMessageAt: tstz("last_message_at").defaultNow().notNull(),
   },
-  (t) => [index().on(t.businessId, t.lastMessageAt)],
+  (t) => [
+    index().on(t.businessId, t.lastMessageAt),
+    unique("ai_conversations_id_business").on(t.id, t.businessId), // target for composite FKs
+  ],
 );
 
 export const aiMessages = pgTable(
@@ -449,9 +456,7 @@ export const aiMessages = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     businessId: businessId(),
-    conversationId: uuid("conversation_id")
-      .notNull()
-      .references(() => aiConversations.id, { onDelete: "cascade" }),
+    conversationId: uuid("conversation_id").notNull(),
     role: aiMessageRoleEnum("role").notNull(),
     content: text("content").notNull().default(""), // plain text, for previews and search
     parts: jsonb("parts").$type<unknown[]>().notNull().default([]), // AI SDK message parts incl. tool calls + results
@@ -459,7 +464,14 @@ export const aiMessages = pgTable(
     outputTokens: integer("output_tokens"),
     createdAt: createdAt(),
   },
-  (t) => [index().on(t.conversationId, t.createdAt), index().on(t.businessId, t.createdAt)],
+  (t) => [
+    index().on(t.conversationId, t.createdAt),
+    index().on(t.businessId, t.createdAt),
+    foreignKey({
+      columns: [t.conversationId, t.businessId],
+      foreignColumns: [aiConversations.id, aiConversations.businessId],
+    }).onDelete("cascade"),
+  ],
 );
 
 // "Question for the team"
@@ -468,10 +480,9 @@ export const handoffRequests = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     businessId: businessId(),
-    conversationId: uuid("conversation_id").references(() => aiConversations.id, {
-      onDelete: "set null",
-    }),
-    customerId: uuid("customer_id").references(() => customers.id, { onDelete: "set null" }),
+    // Composite FKs with ON DELETE SET NULL (column): custom SQL migration.
+    conversationId: uuid("conversation_id"),
+    customerId: uuid("customer_id"),
     name: text("name").notNull(),
     email: text("email").notNull(),
     message: text("message").notNull(),

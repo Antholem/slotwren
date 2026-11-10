@@ -71,6 +71,27 @@
       "when": 1794004894781,
       "tag": "20261106224134_currency_check",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1794314883248,
+      "tag": "20261110124803_tenant_links_fks",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1794314907389,
+      "tag": "20261110124827_tenant_links",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1794315812005,
+      "tag": "20261110130331_booking_guards",
+      "breakpoints": true
     }
   ]
 }
