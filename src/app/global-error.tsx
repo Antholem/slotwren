@@ -3,6 +3,7 @@
 import "./globals.css";
 
 import { AlertCircle } from "lucide-react";
+import Link from "next/link";
 import { useEffect } from "react";
 
 import { Logo } from "@/components/shared/logo";
@@ -43,8 +44,7 @@ export default function GlobalError({ error, retry }: { error: unknown; retry: (
               Try again
             </Button>
             <Button asChild variant="secondary" className="h-11 px-5 text-label">
-              {/* A full page load, since the app shell is what failed. */}
-              <a href="/">Go to the home page</a>
+              <Link href="/">Go to the home page</Link>
             </Button>
           </div>
         </main>
