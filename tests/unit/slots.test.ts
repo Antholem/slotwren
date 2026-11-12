@@ -719,3 +719,86 @@ describe("Asia/Manila business viewed from Europe/London", () => {
     expect(times(slots, LONDON)).toEqual([...grid("04:00", "10:30"), "23:00", "23:30"]);
   });
 });
+
+describe("labels for the customer's clock", () => {
+  const fallNow = new Date("2026-10-20T12:00:00Z");
+  const nightOwl = [person({ id: "mia", hours: hours([["00:00", "04:00"]]) })];
+
+  it("tells the two readings of a repeated autumn hour apart", () => {
+    const slots = run({
+      business: { timezone: NY },
+      now: fallNow,
+      day: "2026-11-01",
+      staff: nightOwl,
+    });
+    const labels = slots.map((s) => s.local);
+    expect(labels.slice(2, 6)).toEqual([
+      { date: "2026-11-01", time: "01:00", offset: "-04:00", zone: "EDT", repeated: "first" },
+      { date: "2026-11-01", time: "01:30", offset: "-04:00", zone: "EDT", repeated: "first" },
+      { date: "2026-11-01", time: "01:00", offset: "-05:00", zone: "EST", repeated: "second" },
+      { date: "2026-11-01", time: "01:30", offset: "-05:00", zone: "EST", repeated: "second" },
+    ]);
+    // Every other time happens once.
+    expect(labels.filter((l) => l.repeated === null).map((l) => l.time)).toEqual([
+      "00:00",
+      "00:30",
+      "02:00",
+      "02:30",
+      "03:00",
+      "03:30",
+    ]);
+    // Time plus zone is enough to tell every slot apart.
+    expect(new Set(labels.map((l) => `${l.time} ${l.zone}`)).size).toBe(slots.length);
+  });
+
+  it("never marks a spring-forward night as repeated", () => {
+    const slots = run({
+      business: { timezone: NY },
+      now: new Date("2026-02-20T12:00:00Z"),
+      day: "2026-03-08",
+      staff: nightOwl,
+    });
+    expect(slots.map((s) => [s.local.time, s.local.zone, s.local.repeated])).toEqual([
+      ["00:00", "EST", null],
+      ["00:30", "EST", null],
+      ["01:00", "EST", null],
+      ["01:30", "EST", null],
+      ["03:00", "EDT", null],
+      ["03:30", "EDT", null],
+    ]);
+  });
+
+  it("labels in the business timezone by default", () => {
+    const [first] = run();
+    expect(first?.local).toEqual({
+      date: DAY,
+      time: "09:00",
+      offset: "+08:00",
+      zone: "GMT+8",
+      repeated: null,
+    });
+  });
+
+  it("labels in the customer's timezone when given", () => {
+    const [first] = run({ displayTimezone: LONDON });
+    expect(first?.local).toEqual({
+      date: DAY,
+      time: "01:00",
+      offset: "+00:00",
+      zone: "GMT",
+      repeated: null,
+    });
+  });
+
+  it("flags the customer's repeated hour even when the business has none", () => {
+    // 13:00–15:00 in Manila on 1 Nov is 01:00 EDT – 02:00 EST in New York.
+    const staff = [person({ id: "mia", hours: hours([["13:00", "15:00"]]) })];
+    const slots = run({ staff, day: "2026-11-01", now: fallNow, displayTimezone: NY });
+    expect(slots.map((s) => `${s.local.time} ${s.local.zone} ${s.local.repeated}`)).toEqual([
+      "01:00 EDT first",
+      "01:30 EDT first",
+      "01:00 EST second",
+      "01:30 EST second",
+    ]);
+  });
+});
