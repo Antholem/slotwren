@@ -138,3 +138,65 @@ test("a staff member adds their own time off", async ({ page }) => {
   await expect(card).toContainText("Next time off: Thu 14 – Fri 15 Mar");
   expect(errors).toEqual([]);
 });
+
+test("an owner adds time off over a booking and cancels it", async ({ page }) => {
+  test.setTimeout(120_000);
+  const errors = collectConsoleErrors(page);
+  // The fixture has one booking: Haircut with Mia, Wed 1 May 2030 at 09:00 Manila.
+  const { fixture } = await businesses.signInWithBusiness(page, "owner", "offbooked");
+  const [booking] = await db
+    .select({ id: schema.bookings.id, code: schema.bookings.code })
+    .from(schema.bookings)
+    .where(eq(schema.bookings.businessId, fixture.business.id));
+
+  await page.goto("/app/staff");
+  await page.getByRole("button", { name: "Edit Mia" }).click();
+  const sheet = page.getByRole("dialog");
+  await sheet.getByRole("tab", { name: "Time off" }).click();
+  await sheet.getByRole("button", { name: "Add time off" }).click();
+  const form = sheet.getByRole("form", { name: "Add time off" });
+  await form.getByLabel("First day").fill("2030-05-01");
+  await form.getByLabel("Last day").fill("2030-05-01");
+  await form.getByLabel("Reason").fill("Family emergency");
+  await form.getByRole("button", { name: "Add time off" }).click();
+
+  // Nothing saved yet: the owner sees the booking and chooses.
+  const choice = form.getByRole("group", { name: "This time off overlaps 1 booking" });
+  await expect(choice).toBeVisible();
+  await expect(choice.getByRole("heading")).toBeFocused();
+  await expect(choice).toContainText("Wed 1 May · 09:00–09:45");
+  await expect(choice).toContainText("Haircut · Ana Santos");
+  await expect(choice).toContainText(booking!.code);
+  await expectNoAxeViolations(page);
+  expect(
+    await db.select().from(schema.timeOff).where(eq(schema.timeOff.staffId, fixture.staff.id)),
+  ).toEqual([]);
+
+  // Keyboard: Tab from the heading reaches the three choices in order.
+  await page.keyboard.press("Tab");
+  await expect(choice.getByRole("button", { name: "Change dates" })).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(choice.getByRole("button", { name: "Keep it" })).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(choice.getByRole("button", { name: "Cancel and notify" })).toBeFocused();
+  await page.keyboard.press("Enter");
+
+  await expect(page.getByText("Time off added")).toBeVisible();
+  await expect(
+    page.getByText(
+      "Cancelled 1 booking. Email isn't set up yet, so let the customers know yourself.",
+    ),
+  ).toBeVisible();
+  await expect(sheet.getByText("Wed 1 May · All day", { exact: true })).toBeVisible();
+
+  const [cancelled] = await db
+    .select()
+    .from(schema.bookings)
+    .where(eq(schema.bookings.id, booking!.id));
+  expect(cancelled).toMatchObject({
+    status: "cancelled",
+    cancelledBy: "staff",
+    cancelReason: "Time off: Family emergency",
+  });
+  expect(errors).toEqual([]);
+});

@@ -2,14 +2,14 @@ import "server-only";
 
 import { randomUUID } from "node:crypto";
 
-import { and, eq } from "drizzle-orm";
+import { and, eq, gt, inArray, lt } from "drizzle-orm";
 
 import type { DayHours } from "@/lib/hours";
 import { toAvailabilityRows } from "@/lib/hours";
 import type { TimeOffValues } from "@/lib/time-off";
 
 import { type RlsClaims, withRls } from "../client";
-import { availabilityRules, staff, timeOff } from "../schema";
+import { availabilityRules, bookings, customers, services, staff, timeOff } from "../schema";
 
 /*
  * Weekly hours and time off for one staff member, as the signed-in member
@@ -22,10 +22,10 @@ export async function findStaff(
   claims: RlsClaims,
   businessId: string,
   staffId: string,
-): Promise<{ id: string; userId: string | null } | null> {
+): Promise<{ id: string; name: string; userId: string | null } | null> {
   const [row] = await withRls(claims, (tx) =>
     tx
-      .select({ id: staff.id, userId: staff.userId })
+      .select({ id: staff.id, name: staff.name, userId: staff.userId })
       .from(staff)
       .where(and(eq(staff.id, staffId), eq(staff.businessId, businessId))),
   );
@@ -37,10 +37,10 @@ export async function findTimeOffStaff(
   claims: RlsClaims,
   businessId: string,
   timeOffId: string,
-): Promise<{ staffId: string; userId: string | null } | null> {
+): Promise<{ staffId: string; name: string; userId: string | null } | null> {
   const [row] = await withRls(claims, (tx) =>
     tx
-      .select({ staffId: timeOff.staffId, userId: staff.userId })
+      .select({ staffId: timeOff.staffId, name: staff.name, userId: staff.userId })
       .from(timeOff)
       .innerJoin(
         staff,
@@ -113,4 +113,57 @@ export async function deleteTimeOff(
       .returning({ id: timeOff.id }),
   );
   return deleted.length > 0;
+}
+
+/** A booking that a new or changed time-off range would overlap. */
+export type BookingDuringTimeOff = {
+  id: string;
+  code: string;
+  startsAt: Date;
+  endsAt: Date;
+  serviceName: string;
+  customerName: string;
+};
+
+/**
+ * Pending and confirmed appointments for one staff member that overlap
+ * `[startsAt, endsAt)`, soonest first. Buffers don't count: time off may cover
+ * a clean-up buffer (docs/adr/0003-slot-rules.md).
+ */
+export async function findBookingsDuring(
+  claims: RlsClaims,
+  businessId: string,
+  staffId: string,
+  range: { startsAt: Date; endsAt: Date },
+): Promise<BookingDuringTimeOff[]> {
+  return withRls(claims, (tx) =>
+    tx
+      .select({
+        id: bookings.id,
+        code: bookings.code,
+        startsAt: bookings.startsAt,
+        endsAt: bookings.endsAt,
+        serviceName: services.name,
+        customerName: customers.name,
+      })
+      .from(bookings)
+      .innerJoin(
+        services,
+        and(eq(services.id, bookings.serviceId), eq(services.businessId, bookings.businessId)),
+      )
+      .innerJoin(
+        customers,
+        and(eq(customers.id, bookings.customerId), eq(customers.businessId, bookings.businessId)),
+      )
+      .where(
+        and(
+          eq(bookings.businessId, businessId),
+          eq(bookings.staffId, staffId),
+          inArray(bookings.status, ["pending", "confirmed"]),
+          lt(bookings.startsAt, range.endsAt),
+          gt(bookings.endsAt, range.startsAt),
+        ),
+      )
+      .orderBy(bookings.startsAt),
+  );
 }

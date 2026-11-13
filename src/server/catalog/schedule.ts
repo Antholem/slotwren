@@ -4,11 +4,14 @@ import { z } from "zod";
 
 import { hoursOutsideOpening, type OpeningRange, weekSchemaFor } from "@/lib/hours";
 import { err, ok, type Result } from "@/lib/result";
-import { timeOffSchemaFor } from "@/lib/time-off";
+import { timeOffSchemaFor, type TimeOffValues } from "@/lib/time-off";
+import { cancelBooking } from "@/server/booking/service";
 import { pgError } from "@/server/db/errors";
 import {
+  type BookingDuringTimeOff,
   createTimeOff,
   deleteTimeOff,
+  findBookingsDuring,
   findStaff,
   findTimeOffStaff,
   replaceStaffHours,
@@ -81,11 +84,86 @@ export async function saveStaffHours(
   return ok({ warnings });
 }
 
+/** How the owner answered "this time off overlaps bookings". */
+export type OnBookings = "keep" | "cancel";
+
+export type TimeOffOutcome =
+  /** Overlapping bookings exist and no choice was given: nothing was saved. */
+  | { status: "needs_choice"; bookings: BookingDuringTimeOff[] }
+  | {
+      status: "saved";
+      id: string;
+      /** Bookings cancelled because of it, and how many customers were emailed. */
+      cancelled: number;
+      notified: number;
+      /** Bookings that couldn't be cancelled (changed meanwhile, or not yours). */
+      notCancelled: number;
+    };
+
+const onBookingsSchema = z.enum(["keep", "cancel"]).optional();
+
+/**
+ * Save time off, minding the bookings it overlaps. With no choice and some
+ * overlap, saves nothing and returns them so the owner can choose: keep them,
+ * or cancel them and email the customers (through booking/service.ts, the one
+ * write path). Reassigning comes with the calendar in Phase 3.
+ */
+async function saveMindingBookings(
+  actor: ScheduleActor,
+  person: { staffId: string; name: string },
+  values: TimeOffValues,
+  onBookings: unknown,
+  save: () => Promise<Result<{ id: string }, ScheduleError>>,
+): Promise<Result<TimeOffOutcome, ScheduleError>> {
+  const choice = onBookingsSchema.safeParse(onBookings);
+  if (!choice.success) return err("invalid_input", "Choose what happens to the bookings.");
+  const overlapping = await findBookingsDuring(
+    actor.claims,
+    actor.businessId,
+    person.staffId,
+    values,
+  );
+  if (overlapping.length > 0 && !choice.data) {
+    return ok({ status: "needs_choice", bookings: overlapping });
+  }
+
+  const saved = await save();
+  if (!saved.ok) return saved;
+  const outcome = {
+    status: "saved" as const,
+    id: saved.data.id,
+    cancelled: 0,
+    notified: 0,
+    notCancelled: 0,
+  };
+  if (choice.data !== "cancel") return ok(outcome);
+
+  for (const booking of overlapping) {
+    const result = await cancelBooking(
+      { kind: "member", actor, bookingId: booking.id },
+      { reason: values.reason ? `Time off: ${values.reason}` : "Time off" },
+      {
+        notify: true,
+        // The time-off reason is for the team only; customers get this.
+        customerMessage: `${person.name} isn't available at that time any more. Book another time, or reply to this email to ask us.`,
+      },
+    );
+    if (!result.ok) {
+      outcome.notCancelled++;
+      continue;
+    }
+    outcome.cancelled++;
+    if (result.data.notified) outcome.notified++;
+  }
+  return ok(outcome);
+}
+
 export async function addTimeOff(
   actor: ScheduleActor,
   staffId: string,
   input: unknown,
-): Promise<Result<{ id: string }, ScheduleError>> {
+  onBookings?: unknown,
+): Promise<Result<TimeOffOutcome, ScheduleError>> {
   if (!idSchema.safeParse(staffId).success) return err("not_found", NOT_FOUND);
   const person = await findStaff(actor.claims, actor.businessId, staffId);
   if (!person) return err("not_found", NOT_FOUND);
@@ -93,19 +171,29 @@ export async function addTimeOff(
 
   const parsed = timeOffSchemaFor(actor.timezone, actor.slotIntervalMin).safeParse(input);
   if (!parsed.success) return invalid(parsed.error);
-  try {
-    return ok({ id: await createTimeOff(actor.claims, actor.businessId, staffId, parsed.data) });
-  } catch (error) {
-    if (isRlsRefusal(error)) return err("forbidden", FORBIDDEN);
-    throw error;
-  }
+  const values = parsed.data;
+  return saveMindingBookings(
+    actor,
+    { staffId, name: person.name },
+    values,
+    onBookings,
+    async () => {
+      try {
+        return ok({ id: await createTimeOff(actor.claims, actor.businessId, staffId, values) });
+      } catch (error) {
+        if (isRlsRefusal(error)) return err("forbidden", FORBIDDEN);
+        throw error;
+      }
+    },
+  );
 }
 
 export async function editTimeOff(
   actor: ScheduleActor,
   timeOffId: string,
   input: unknown,
-): Promise<Result<{ id: string }, ScheduleError>> {
+  onBookings?: unknown,
+): Promise<Result<TimeOffOutcome, ScheduleError>> {
   if (!idSchema.safeParse(timeOffId).success) return err("not_found", NOT_FOUND);
   const entry = await findTimeOffStaff(actor.claims, actor.businessId, timeOffId);
   if (!entry) return err("not_found", NOT_FOUND);
@@ -113,8 +201,11 @@ export async function editTimeOff(
 
   const parsed = timeOffSchemaFor(actor.timezone, actor.slotIntervalMin).safeParse(input);
   if (!parsed.success) return invalid(parsed.error);
-  const updated = await updateTimeOff(actor.claims, actor.businessId, timeOffId, parsed.data);
-  return updated ? ok({ id: timeOffId }) : err("forbidden", FORBIDDEN);
+  const values = parsed.data;
+  return saveMindingBookings(actor, entry, values, onBookings, async () => {
+    const updated = await updateTimeOff(actor.claims, actor.businessId, timeOffId, values);
+    return updated ? ok({ id: timeOffId }) : err("forbidden", FORBIDDEN);
+  });
 }
 
 export async function removeTimeOff(

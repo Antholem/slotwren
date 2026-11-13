@@ -1,7 +1,7 @@
 "use client";
 
 import { AlertTriangle, CalendarDays, Loader2, Plus } from "lucide-react";
-import { useId, useMemo, useState, useTransition } from "react";
+import { useEffect, useId, useMemo, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
 
@@ -28,6 +28,7 @@ import {
   WEEKDAY_NAMES,
   weekSchemaFor,
 } from "@/lib/hours";
+import { formatInZone } from "@/lib/dates";
 import {
   timeOffLabel,
   type TimeOffInput,
@@ -36,6 +37,8 @@ import {
   toTimeOffInput,
 } from "@/lib/time-off";
 import { cn } from "@/lib/utils";
+import type { OnBookings } from "@/server/catalog/schedule";
+import type { BookingDuringTimeOff } from "@/server/db/queries/schedule";
 import type { DashboardStaff } from "@/server/db/queries/staff";
 
 import {
@@ -297,8 +300,8 @@ export function TimeOffPanel({
       )}
 
       <p className="text-body-sm text-muted-foreground">
-        Customers can&rsquo;t book {firstName} during time off. Bookings already made stay as they
-        are.
+        Customers can&rsquo;t book {firstName} during time off. If it overlaps bookings, you choose
+        whether to keep them or cancel them and let the customers know.
       </p>
     </section>
   );
@@ -455,11 +458,20 @@ function TimeOffForm({
     reason: `${id}-reason`,
   };
 
-  const set = <K extends keyof TimeOffInput>(key: K, value: TimeOffInput[K]) =>
+  // Bookings the range overlaps, once the server has asked what to do with them.
+  const [conflicts, setConflicts] = useState<BookingDuringTimeOff[] | null>(null);
+
+  const set = <K extends keyof TimeOffInput>(key: K, value: TimeOffInput[K]) => {
     setValues((v) => ({ ...v, [key]: value }));
+    setConflicts(null); // a different range may overlap different bookings
+  };
 
   function submit(event: React.FormEvent) {
     event.preventDefault();
+    save();
+  }
+
+  function save(onBookings?: OnBookings) {
     const parsed = timeOffSchemaFor(context.timezone, context.slotIntervalMin).safeParse(values);
     if (!parsed.success) {
       const { fieldErrors } = z.flattenError(parsed.error);
@@ -470,15 +482,21 @@ function TimeOffForm({
     setFormError(null);
     startTransition(async () => {
       const result = entry
-        ? await editTimeOffAction(entry.id, values)
-        : await addTimeOffAction(staffId!, values);
+        ? await editTimeOffAction(entry.id, values, onBookings)
+        : await addTimeOffAction(staffId!, values, onBookings);
       if (!result.ok) {
         const fields = result.error.fieldErrors ?? {};
         setErrors(Object.fromEntries(Object.entries(fields).map(([k, v]) => [k, v?.[0]])));
         if (Object.keys(fields).length === 0) setFormError(result.error.message);
         return;
       }
-      toast.success(entry ? "Time off updated" : "Time off added");
+      if (result.data.status === "needs_choice") {
+        setConflicts(result.data.bookings);
+        return;
+      }
+      toast.success(entry ? "Time off updated" : "Time off added", {
+        description: cancellationSummary(result.data),
+      });
       onDone();
     });
   }
@@ -596,16 +614,151 @@ function TimeOffForm({
         Times are in the business&rsquo;s timezone ({context.timezone.replaceAll("_", " ")}).
       </p>
 
-      <div className="flex justify-end gap-3">
-        <Button type="button" variant="secondary" className="h-11 px-4 text-label" onClick={onDone}>
-          Cancel
+      {conflicts ? (
+        <BookingConflicts
+          bookings={conflicts}
+          timezone={context.timezone}
+          pending={pending}
+          onChoose={save}
+          onBack={() => setConflicts(null)}
+        />
+      ) : (
+        <div className="flex justify-end gap-3">
+          <Button
+            type="button"
+            variant="secondary"
+            className="h-11 px-4 text-label"
+            onClick={onDone}
+          >
+            Cancel
+          </Button>
+          <Button type="submit" disabled={pending} className="h-11 px-4 text-label">
+            {pending && <Loader2 aria-hidden className="animate-spin" />}
+            {entry ? "Save time off" : "Add time off"}
+          </Button>
+        </div>
+      )}
+    </form>
+  );
+}
+
+const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
+
+/** The toast's second line after saving with "cancel and notify". */
+function cancellationSummary(outcome: {
+  cancelled: number;
+  notified: number;
+  notCancelled: number;
+}): string | undefined {
+  const parts: string[] = [];
+  if (outcome.cancelled > 0) {
+    const what = `Cancelled ${plural(outcome.cancelled, "booking")}`;
+    parts.push(
+      outcome.notified === outcome.cancelled
+        ? `${what} and emailed the customers.`
+        : outcome.notified === 0
+          ? `${what}. Email isn't set up yet, so let the customers know yourself.`
+          : `${what} and emailed ${outcome.notified} of the customers. Let the rest know yourself.`,
+    );
+  }
+  if (outcome.notCancelled > 0) {
+    parts.push(
+      `${plural(outcome.notCancelled, "booking")} couldn't be cancelled. Check the calendar.`,
+    );
+  }
+  return parts.length ? parts.join(" ") : undefined;
+}
+
+/**
+ * "This time off overlaps 2 bookings": what they are, and the choice to keep
+ * them or cancel them and email the customers. Reassigning comes in Phase 3.
+ */
+function BookingConflicts({
+  bookings,
+  timezone,
+  pending,
+  onChoose,
+  onBack,
+}: {
+  bookings: BookingDuringTimeOff[];
+  timezone: string;
+  pending: boolean;
+  onChoose: (choice: OnBookings) => void;
+  onBack: () => void;
+}) {
+  const headingId = useId();
+  const heading = useRef<HTMLHeadingElement>(null);
+  // Land keyboard and screen-reader users on the choice when it appears.
+  useEffect(() => heading.current?.focus(), []);
+  const count = plural(bookings.length, "booking");
+  return (
+    <div
+      role="group"
+      aria-labelledby={headingId}
+      className="flex flex-col gap-3 rounded-lg border border-warning bg-card p-4"
+    >
+      <div className="flex items-start gap-3">
+        <AlertTriangle aria-hidden className="mt-0.5 size-4 shrink-0 text-warning-text" />
+        <div className="flex flex-col gap-1">
+          <h3
+            id={headingId}
+            tabIndex={-1}
+            ref={heading}
+            className="text-label font-medium outline-none"
+          >
+            This time off overlaps {count}
+          </h3>
+          <p className="text-body-sm text-muted-foreground">
+            Keep them as they are, or cancel them and email each customer.
+          </p>
+        </div>
+      </div>
+      <ul className="flex flex-col divide-y rounded-md border">
+        {bookings.map((booking) => (
+          <li key={booking.id} className="flex flex-wrap items-baseline gap-x-3 gap-y-1 px-3 py-2">
+            <span className="font-mono text-body-sm tabular-nums">
+              {formatInZone(booking.startsAt, timezone, "EEE d MMM · HH:mm")}–
+              {formatInZone(booking.endsAt, timezone, "HH:mm")}
+            </span>
+            <span className="text-body-sm">
+              {booking.serviceName} · {booking.customerName}
+            </span>
+            <span className="font-mono text-body-sm text-muted-foreground tabular-nums">
+              {booking.code}
+            </span>
+          </li>
+        ))}
+      </ul>
+      <div className="flex flex-wrap justify-end gap-3">
+        <Button
+          type="button"
+          variant="ghost"
+          className="h-11 px-4 text-label"
+          disabled={pending}
+          onClick={onBack}
+        >
+          Change dates
         </Button>
-        <Button type="submit" disabled={pending} className="h-11 px-4 text-label">
+        <Button
+          type="button"
+          variant="secondary"
+          className="h-11 px-4 text-label"
+          disabled={pending}
+          onClick={() => onChoose("keep")}
+        >
+          Keep {bookings.length === 1 ? "it" : "them"}
+        </Button>
+        <Button
+          type="button"
+          disabled={pending}
+          className="h-11 bg-destructive px-4 text-label text-destructive-foreground hover:bg-destructive-hover"
+          onClick={() => onChoose("cancel")}
+        >
           {pending && <Loader2 aria-hidden className="animate-spin" />}
-          {entry ? "Save time off" : "Add time off"}
+          Cancel and notify
         </Button>
       </div>
-    </form>
+    </div>
   );
 }
 
