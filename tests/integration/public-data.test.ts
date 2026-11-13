@@ -3,11 +3,12 @@ import { createHash } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
+import { findBookingByManageToken } from "@/server/db/queries/public/bookings";
 import { getPublicBusinessBySlug } from "@/server/db/queries/public/business";
 import { getInvitePreview, getInviteRecipient } from "@/server/db/queries/public/invites";
 import * as schema from "@/server/db/schema";
 
-import { connectTestDb, createFixtureBusiness } from "../support/db";
+import { bookingValues, connectTestDb, createFixtureBusiness } from "../support/db";
 
 /*
  * Public queries (adminDb, no signed-in user) may only return public fields
@@ -111,6 +112,19 @@ describe("public data", () => {
 
   // The one public query that returns an address: server-only, used to email
   // the invitee their sign-in link. The browser gets maskEmail() of it.
+  it("a manage link resolves to its business and booking IDs only", async () => {
+    const [booking] = await db
+      .insert(schema.bookings)
+      .values(
+        bookingValues(fixture, new Date("2026-11-03T02:00:00Z"), { manageTokenHash: tokenHash }),
+      )
+      .returning({ id: schema.bookings.id });
+    const found = await findBookingByManageToken({ tokenHash });
+    expect(found).toEqual({ businessId: fixture.business.id, bookingId: booking!.id });
+    expectNothingPrivate(found);
+    expect(await findBookingByManageToken({ tokenHash: "0".repeat(64) })).toBeNull();
+  });
+
   it("the invite's recipient is found only for a live, pending invite", async () => {
     expect(await getInviteRecipient({ tokenHash, now: new Date() })).toBe(inviteEmail);
     expect(await getInviteRecipient({ tokenHash: "0".repeat(64), now: new Date() })).toBeNull();
