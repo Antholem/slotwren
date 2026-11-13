@@ -407,10 +407,10 @@ Phase 2: Booking engine. Tests first.
 
 Notes for Phase 2:
 
-- [ ] TODO (deferred from step 1.9, staff time off): when adding time off that overlaps existing
-      bookings, ask the owner what to do (keep, reassign, cancel and notify). Today the time-off
-      form just says bookings already made stay as they are; the choice needs `booking/service.ts`
-      for reassigning and cancelling, and the emails for notifying.
+- [x] Done in step 2.3 (deferred from step 1.9, staff time off): time off that overlaps
+      bookings shows them and asks the owner to keep them, or cancel them and email the
+      customers (through `booking/service.ts`). Still to do in Phase 3: **reassign** to another
+      staff member, from the calendar.
 
 ### Phase 3 — Dashboard (week 4)
 

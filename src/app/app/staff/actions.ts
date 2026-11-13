@@ -9,7 +9,9 @@ import {
   editTimeOff,
   removeTimeOff,
   saveStaffHours,
+  type OnBookings,
   type ScheduleActor,
+  type TimeOffOutcome,
 } from "@/server/catalog/schedule";
 import type { Actor } from "@/server/catalog/services";
 import {
@@ -88,12 +90,22 @@ export async function saveStaffHoursAction(staffId: string, input: unknown) {
   return settle(await saveStaffHours(await scheduler(), staffId, input));
 }
 
-export async function addTimeOffAction(staffId: string, input: unknown) {
-  return settle(await addTimeOff(await scheduler(), staffId, input));
+/** Refresh only when the time off was saved, not when the owner must choose first. */
+function settleTimeOff<T extends Result<TimeOffOutcome, string>>(result: T): T {
+  if (result.ok && result.data.status === "saved") refresh();
+  return result;
 }
 
-export async function editTimeOffAction(timeOffId: string, input: unknown) {
-  return settle(await editTimeOff(await scheduler(), timeOffId, input));
+export async function addTimeOffAction(staffId: string, input: unknown, onBookings?: OnBookings) {
+  return settleTimeOff(await addTimeOff(await scheduler(), staffId, input, onBookings));
+}
+
+export async function editTimeOffAction(
+  timeOffId: string,
+  input: unknown,
+  onBookings?: OnBookings,
+) {
+  return settleTimeOff(await editTimeOff(await scheduler(), timeOffId, input, onBookings));
 }
 
 export async function removeTimeOffAction(timeOffId: string) {

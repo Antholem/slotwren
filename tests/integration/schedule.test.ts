@@ -239,7 +239,7 @@ describe("staff schedules", () => {
         allDay("2026-11-01", "2026-11-01", "Wedding"),
       );
       expect(result.ok).toBe(true);
-      samOff = result.ok ? result.data.id : "";
+      samOff = result.ok && result.data.status === "saved" ? result.data.id : "";
       expect(await timeOffRow(samOff)).toMatchObject({
         staffId: samId,
         businessId: a.business.id,
@@ -253,7 +253,9 @@ describe("staff schedules", () => {
     it("part of a day converts each end on its own side of the change", async () => {
       const result = await addTimeOff(staffer, samId, partDay("2026-11-02", "13:00", "17:00"));
       expect(result.ok).toBe(true);
-      const row = await timeOffRow(result.ok ? result.data.id : "");
+      const row = await timeOffRow(
+        result.ok && result.data.status === "saved" ? result.data.id : "",
+      );
       expect(row).toMatchObject({
         allDay: false,
         startsAt: new Date("2026-11-02T18:00:00Z"), // 13:00 EST
@@ -274,7 +276,7 @@ describe("staff schedules", () => {
 
       const created = await addTimeOff(owner, jonahId, allDay("2026-12-24", "2026-12-26"));
       expect(created.ok).toBe(true);
-      jonahOff = created.ok ? created.data.id : "";
+      jonahOff = created.ok && created.data.status === "saved" ? created.data.id : "";
       const before = await timeOffRow(jonahOff);
 
       expect(await editTimeOff(staffer, jonahOff, allDay("2027-01-04"))).toMatchObject({
@@ -336,7 +338,7 @@ describe("staff schedules", () => {
 
     it("another business can't touch it", async () => {
       const created = await addTimeOff(owner, jonahId, allDay("2027-02-01"));
-      const id = created.ok ? created.data.id : "";
+      const id = created.ok && created.data.status === "saved" ? created.data.id : "";
       expect(await addTimeOff(otherOwner, jonahId, allDay("2027-02-02"))).toMatchObject({
         ok: false,
         error: { code: "not_found" },
