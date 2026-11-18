@@ -6,6 +6,7 @@ import { env } from "@/env";
 import { formatInZone } from "@/lib/dates";
 import { err, ok, type Result } from "@/lib/result";
 import { isValidTimeZone } from "@/lib/timezones";
+import { customerSchema, notesSchema, optionalText } from "@/lib/validation/booking";
 import { zoneClock } from "@/lib/zone-clock";
 import { BookingCancelledEmail } from "@/emails/booking-cancelled";
 import type { Actor } from "@/server/catalog/services";
@@ -78,32 +79,12 @@ const instant = z
 
 const staffChoice = z.union([z.literal("any"), z.uuid("Pick someone from the list.")]);
 
-const optionalText = (max: number, message: string) =>
-  z
-    .string()
-    .trim()
-    .max(max, message)
-    .optional()
-    .transform((value) => value || null);
-
 const createSchema = z.object({
   serviceId: z.uuid("Pick a service."),
   staffId: staffChoice,
   startsAt: instant,
-  customer: z.object({
-    name: z
-      .string()
-      .trim()
-      .min(1, "Enter your name.")
-      .max(80, "Keep your name under 80 characters."),
-    email: z
-      .string()
-      .trim()
-      .max(254, "That email address is too long.")
-      .pipe(z.email("Enter a valid email address.")),
-    phone: optionalText(40, "That phone number is too long."),
-  }),
-  notes: optionalText(500, "Keep notes under 500 characters."),
+  customer: customerSchema,
+  notes: notesSchema,
   customerTimezone: z
     .string()
     .refine(isValidTimeZone, "Unknown timezone.")

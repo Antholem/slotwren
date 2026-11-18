@@ -4,6 +4,7 @@ import { minutesOf, timeOf } from "@/lib/hours";
 import { nextDate, zonedInstant, zonedParts } from "@/lib/time-off";
 import {
   getAvailableSlots,
+  getSlotGrid,
   type BookingStatus,
   type Slot,
   type SlotBusiness,
@@ -800,5 +801,60 @@ describe("labels for the customer's clock", () => {
       "01:00 EST second",
       "01:30 EST second",
     ]);
+  });
+});
+
+describe("getSlotGrid", () => {
+  const grid30 = (q: Run = {}) => {
+    const biz = business(q.business);
+    const { business: _b, day = DAY, days = 1, ...rest } = q;
+    return getSlotGrid({
+      business: biz,
+      service: service(),
+      staff: [person({ id: "mia" })],
+      staffId: "mia",
+      from: at(day, "00:00", biz.timezone),
+      to: at(nextDate(day, days), "00:00", biz.timezone),
+      now: NOW,
+      ...rest,
+    });
+  };
+
+  it("marks booked starts as taken and leaves the rest available", () => {
+    const { available, taken } = grid30({
+      staff: [person({ id: "mia", bookings: [booking(DAY, "10:00", "11:00")] })],
+    });
+    expect(times(taken)).toEqual(["10:00", "10:30"]);
+    expect(times(available)).toEqual([...grid("09:00", "09:30"), ...grid("11:00", "16:30")]);
+  });
+
+  it("never calls time off, closed hours or past times taken", () => {
+    const { taken } = grid30({
+      now: at(DAY, "12:00"),
+      staff: [
+        person({
+          id: "mia",
+          timeOff: [away(DAY, "14:00", DAY, "15:00")],
+          bookings: [booking(DAY, "10:00", "11:00", { status: "cancelled" })],
+        }),
+      ],
+    });
+    expect(taken).toEqual([]);
+  });
+
+  it('calls a time taken for "any" only when everyone who works then is booked', () => {
+    const { available, taken } = grid30({
+      staffId: "any",
+      staff: [
+        person({ id: "mia", bookings: [booking(DAY, "10:00", "11:00")] }),
+        person({
+          id: "jonah",
+          sortOrder: 1,
+          bookings: [booking(DAY, "10:30", "11:00")],
+        }),
+      ],
+    });
+    expect(times(taken)).toEqual(["10:30"]);
+    expect(available.find((s) => times([s])[0] === "10:00")?.staffId).toBe("jonah");
   });
 });
