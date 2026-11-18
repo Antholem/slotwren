@@ -40,7 +40,7 @@ export function LocalRange({
   className?: string;
 }) {
   return (
-    <span className={cn("font-mono tabular-nums", className)}>
+    <span className={cn("font-mono whitespace-nowrap tabular-nums", className)}>
       <LocalTime value={start} pattern="HH:mm" placeholder="--:--" /> –{" "}
       <LocalTime value={end} pattern="HH:mm" placeholder="--:--" />
     </span>

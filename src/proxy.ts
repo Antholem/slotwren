@@ -2,6 +2,7 @@ import { type NextRequest, NextResponse } from "next/server";
 
 import { SLUG_PATTERN } from "@/lib/slug";
 import { getAccountStatus } from "@/server/db/queries/onboarding";
+import { getBookingConfirmation } from "@/server/db/queries/public/booking-page";
 import { getPublicBusinessBySlug } from "@/server/db/queries/public/business";
 import { redirectWithSession, updateSession } from "@/server/supabase/proxy";
 
@@ -11,7 +12,7 @@ import { redirectWithSession, updateSession } from "@/server/supabase/proxy";
  * - /app/* also needs a live business, else /onboarding (which resumes the
  *   wizard where the owner left off)
  * - /sign-in while signed in goes to /app
- * - /b/<slug> (no session): unknown booking links get a real 404
+ * - /b/<slug> and /b/<slug>/booked/<id> (no session): unknown links get a real 404
  *
  * This is the first gate, not the only one: pages and server actions still
  * check the user themselves (see src/server/auth/session.ts).
@@ -44,11 +45,20 @@ export async function proxy(request: NextRequest) {
  * so the check runs here, before rendering. No session: the page is public.
  */
 async function bookingPageGate(request: NextRequest, pathname: string) {
-  const slug = pathname.split("/")[2] ?? "";
-  if (SLUG_PATTERN.test(slug) && (await getPublicBusinessBySlug(slug))) return NextResponse.next();
+  // /b/<slug>[/booked/<bookingId>[/event.ics]]
+  const [, , slug = "", sub, bookingId = ""] = pathname.split("/");
+  const business = SLUG_PATTERN.test(slug) ? await getPublicBusinessBySlug(slug) : null;
+  const found =
+    business &&
+    (sub !== "booked" ||
+      (UUID.test(bookingId) &&
+        (await getBookingConfirmation({ businessId: business.id, bookingId }))));
+  if (found) return NextResponse.next();
   // A route that doesn't exist renders the branded not-found page with a 404.
   return NextResponse.rewrite(new URL("/_booking-link-not-found", request.url));
 }
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function isAppPath(pathname: string) {
   return pathname === "/app" || pathname.startsWith("/app/");

@@ -424,7 +424,7 @@ function DayStrip({
                 isSelected
                   ? "border-primary bg-primary text-primary-foreground"
                   : closed
-                    ? "border-transparent bg-muted text-muted-foreground"
+                    ? "border-dashed bg-background text-muted-foreground"
                     : "bg-card hover:border-input",
                 beyond && "cursor-not-allowed",
               )}
@@ -588,7 +588,7 @@ function TimeGrid({
                       "flex h-12 items-center justify-center rounded-xl font-mono text-label tabular-nums line-through",
                       slot.start === justTaken
                         ? "border border-danger bg-danger-soft text-danger-text"
-                        : "bg-muted text-muted-foreground",
+                        : "border border-dashed bg-background text-muted-foreground",
                     )}
                   >
                     {chipLabel(slot)}
