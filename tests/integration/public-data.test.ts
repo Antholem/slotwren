@@ -3,6 +3,8 @@ import { createHash } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
+import { getNextOpenings, getPublicSlots } from "@/server/booking/public-slots";
+import { getBookingConfirmation, getBookingPage } from "@/server/db/queries/public/booking-page";
 import { findBookingByManageToken } from "@/server/db/queries/public/bookings";
 import { getPublicBusinessBySlug } from "@/server/db/queries/public/business";
 import { getInvitePreview, getInviteRecipient } from "@/server/db/queries/public/invites";
@@ -27,6 +29,10 @@ const PRIVATE_KEYS = [
   "settings",
   "invitedBy",
   "phone",
+  "email",
+  "customerId",
+  "customerName",
+  "contactEmail",
 ];
 
 describe("public data", () => {
@@ -130,5 +136,206 @@ describe("public data", () => {
     expect(await getInviteRecipient({ tokenHash: "0".repeat(64), now: new Date() })).toBeNull();
     const later = new Date(Date.now() + 2 * 86_400_000); // past expiry
     expect(await getInviteRecipient({ tokenHash, now: later })).toBeNull();
+  });
+
+  describe("the booking page", () => {
+    // Mia does the haircut. Jonah left (inactive), Kai does nothing yet, one
+    // service is archived and another only Jonah did: none of those show.
+    let jonahId: string;
+    let kaiId: string;
+    let retiredId: string;
+    let unstaffedId: string;
+
+    beforeAll(async () => {
+      const businessId = fixture.business.id;
+      await db
+        .update(schema.businesses)
+        .set({
+          address: "12 Lumen Lane",
+          phone: "+63 2 8000 0000",
+          contactEmail: "owner-private@example.com",
+          settings: {
+            openingHours: [{ weekday: 2, start: "09:00", end: "18:00" }],
+            notifications: { ownerNewBookingEmail: true },
+          },
+        })
+        .where(eq(schema.businesses.id, businessId));
+      const [jonah, kai] = await db
+        .insert(schema.staff)
+        .values([
+          { businessId, name: "Jonah", color: "violet", active: false },
+          { businessId, name: "Kai", color: "pink" },
+        ])
+        .returning({ id: schema.staff.id });
+      jonahId = jonah!.id;
+      kaiId = kai!.id;
+      const [retired, unstaffed] = await db
+        .insert(schema.services)
+        .values([
+          { businessId, name: "Retired", durationMin: 30, archivedAt: new Date() },
+          { businessId, name: "Only Jonah did this", durationMin: 30 },
+        ])
+        .returning({ id: schema.services.id });
+      retiredId = retired!.id;
+      unstaffedId = unstaffed!.id;
+      await db.insert(schema.staffServices).values([
+        { businessId, staffId: fixture.staff.id, serviceId: fixture.service.id },
+        { businessId, staffId: jonahId, serviceId: fixture.service.id },
+        { businessId, staffId: jonahId, serviceId: unstaffedId },
+        { businessId, staffId: fixture.staff.id, serviceId: retiredId },
+      ]);
+      await db.insert(schema.availabilityRules).values(
+        [0, 1, 2, 3, 4, 5, 6].map((weekday) => ({
+          businessId,
+          staffId: fixture.staff.id,
+          weekday,
+          startTime: "09:00",
+          endTime: "17:00",
+        })),
+      );
+    });
+
+    it("shows the public profile, bookable services and the people who do them", async () => {
+      const page = await getBookingPage(fixture.business.id);
+      expect(page).toEqual({
+        business: {
+          id: fixture.business.id,
+          slug: fixture.business.slug,
+          name: fixture.business.name,
+          logoUrl: null,
+          brandColor: fixture.business.brandColor,
+          address: "12 Lumen Lane",
+          timezone: "Asia/Manila",
+          currency: "USD",
+          cancellationWindowHours: 24,
+          maxDaysAhead: 60,
+          openingHours: [{ weekday: 2, start: "09:00", end: "18:00" }],
+        },
+        services: [{ id: fixture.service.id, name: "Haircut", durationMin: 45, priceCents: 3500 }],
+        staff: [
+          {
+            id: fixture.staff.id,
+            name: "Mia",
+            title: null,
+            color: "teal",
+            serviceIds: [fixture.service.id],
+          },
+        ],
+      });
+      expectNothingPrivate(page);
+      const json = JSON.stringify(page);
+      for (const hidden of [
+        "+63 2 8000 0000",
+        "owner-private@",
+        "ownerNewBookingEmail",
+        kaiId, // does nothing bookable
+        jonahId, // inactive
+        retiredId, // archived
+        unstaffedId, // only an inactive person does it
+      ]) {
+        expect(json).not.toContain(hidden);
+      }
+    });
+
+    it("has nothing for a business that doesn't exist", async () => {
+      expect(await getBookingPage("00000000-0000-4000-8000-000000000000")).toBeNull();
+    });
+
+    it("lists times with labels and staff IDs only", async () => {
+      const now = new Date("2026-11-01T00:00:00Z");
+      // Booked 13:00 to 14:00 on Tue 3 Nov (Manila), so some times are taken.
+      await db
+        .insert(schema.bookings)
+        .values(bookingValues(fixture, new Date("2026-11-03T05:00:00Z")));
+      const slots = await getPublicSlots({
+        businessId: fixture.business.id,
+        serviceId: fixture.service.id,
+        staffId: "any",
+        from: new Date("2026-11-02T16:00:00Z"),
+        to: new Date("2026-11-03T16:00:00Z"),
+        timezone: "Europe/London",
+        now,
+      });
+      const day = slots!.days["2026-11-03"]!;
+      expect(day.available[0]).toEqual({
+        start: "2026-11-03T01:00:00.000Z",
+        end: "2026-11-03T01:45:00.000Z",
+        staffId: fixture.staff.id,
+        date: "2026-11-03",
+        time: "01:00", // on a London clock
+        offset: "+00:00",
+        zone: "GMT",
+        repeated: null,
+      });
+      expect(day.taken.map((t) => t.start)).toContain("2026-11-03T05:00:00.000Z");
+      expect(day.taken.every((t) => t.staffId === null)).toBe(true);
+      expect(slots!.next).not.toBeNull();
+      expectNothingPrivate(slots);
+
+      const openings = await getNextOpenings({
+        businessId: fixture.business.id,
+        serviceId: fixture.service.id,
+        staffIds: [fixture.staff.id],
+        timezone: "Asia/Manila",
+        now,
+      });
+      expect(openings).toEqual({
+        // 08:00 Manila plus two hours' notice.
+        any: "2026-11-01T02:00:00.000Z",
+        [fixture.staff.id]: "2026-11-01T02:00:00.000Z",
+      });
+    });
+
+    it("lists nothing for a service customers can't book", async () => {
+      const window = {
+        businessId: fixture.business.id,
+        staffId: "any",
+        from: new Date("2026-11-02T16:00:00Z"),
+        to: new Date("2026-11-03T16:00:00Z"),
+        timezone: "Asia/Manila",
+        now: new Date("2026-11-01T00:00:00Z"),
+      };
+      expect(await getPublicSlots({ ...window, serviceId: retiredId })).toBeNull();
+      const unstaffed = await getPublicSlots({ ...window, serviceId: unstaffedId });
+      expect(Object.values(unstaffed!.days).flatMap((d) => d.available)).toEqual([]);
+    });
+
+    it("confirms a booking without anything about the customer", async () => {
+      const [booking] = await db
+        .insert(schema.bookings)
+        .values(
+          bookingValues(fixture, new Date("2026-11-04T02:00:00Z"), {
+            customerNotes: "PRIVATE NOTE from the customer",
+          }),
+        )
+        .returning({ id: schema.bookings.id, code: schema.bookings.code });
+      const confirmation = await getBookingConfirmation({
+        businessId: fixture.business.id,
+        bookingId: booking!.id,
+      });
+      expect(confirmation).toEqual({
+        id: booking!.id,
+        code: booking!.code,
+        status: "confirmed",
+        startsAt: new Date("2026-11-04T02:00:00Z"),
+        endsAt: new Date("2026-11-04T02:45:00Z"),
+        serviceName: "Haircut",
+        durationMin: 45,
+        staffName: "Mia",
+        priceCents: 3500,
+      });
+      expectNothingPrivate(confirmation);
+      expect(JSON.stringify(confirmation)).not.toContain("Ana Santos");
+
+      // Another business's ID finds nothing.
+      const other = await createFixtureBusiness(db);
+      try {
+        expect(
+          await getBookingConfirmation({ businessId: other.business.id, bookingId: booking!.id }),
+        ).toBeNull();
+      } finally {
+        await other.cleanup();
+      }
+    });
   });
 });

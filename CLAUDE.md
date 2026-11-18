@@ -66,9 +66,10 @@ src/
     app/                 owner dashboard (protected): today, calendar, bookings, customers,
                          services, staff, ai, insights, settings/*, live (booking link + QR).
                          layout.tsx is the shell; server actions per page call src/server/catalog
-    b/[slug]/            public booking flow (+ opengraph-image)
+    b/[slug]/            public booking flow (URL state: lib/booking-page.ts), booked/[id] + .ics, opengraph-image
     m/[token]/           manage booking (reschedule / cancel)
     embed/[slug]/        iframe target for the widget
+    api/slots/[slug]/    open and taken times for the booking page (customer timezone)
     api/chat/[slug]/     AI receptionist (streaming)
     api/webhooks/stripe/ billing webhooks
     api/inngest/         background jobs
@@ -76,8 +77,9 @@ src/
     ui/                  shadcn primitives (generated; edit sparingly)
     booking/ dashboard/ chat/ settings/ marketing/ shared/
   emails/                React Email templates
-  hooks/                 client hooks (Realtime, media queries)
-  lib/                   client-safe pure helpers: result.ts, money, dates, hours, time-off, theme, utils
+  hooks/                 client hooks (Realtime, media queries, customer timezone)
+  lib/                   client-safe pure helpers: result.ts, money, dates, hours, time-off, theme,
+                         zone-clock, brand-theme (brand colour as AA tokens), calendar (.ics), utils
   server/                server-only (`import "server-only"`)
     db/schema.ts         Drizzle schema
     db/client.ts         withRls() (and the raw adminDb, used only by db/admin.ts)
@@ -87,6 +89,7 @@ src/
     db/queries/system/   adminQuery-based access for webhooks and jobs
     booking/slots.ts     PURE slot engine
     booking/service.ts   the ONE booking write path
+    booking/public-slots.ts  availability for the booking page (same engine and data)
     ai/                  model.ts, prompt.ts, tools.ts
     catalog/             services etc.: auth + validation + Result, behind server actions
     email/send.ts        sendEmail(): Resend, or logs the email when RESEND_API_KEY is unset

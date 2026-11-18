@@ -245,3 +245,18 @@ function zoneName(zone: string, instant: number, offsetMin: number): string {
   }
   return name;
 }
+
+/**
+ * Available slots, plus the "taken" ones: starts that someone works and that
+ * would be free but for existing bookings. The booking page shows those struck
+ * through. Time off, closed hours and notice never produce taken times.
+ */
+export function getSlotGrid(query: SlotQuery): { available: Slot[]; taken: Slot[] } {
+  const available = getAvailableSlots(query);
+  const free = new Set(available.map((slot) => slot.start.getTime()));
+  const unbooked = getAvailableSlots({
+    ...query,
+    staff: query.staff.map((person) => ({ ...person, bookings: [] })),
+  });
+  return { available, taken: unbooked.filter((slot) => !free.has(slot.start.getTime())) };
+}

@@ -6,7 +6,16 @@ import { useEffect } from "react";
 import { Button } from "@/components/ui/button";
 
 /** Body for a segment's error.tsx: a calm message and a retry. */
-export function RouteError({ error, retry }: { error: unknown; retry: () => void }) {
+export function RouteError({
+  error,
+  retry,
+  message = "This page didn't load. Try again, and if it keeps happening, sign out and back in.",
+}: {
+  error: unknown;
+  retry: () => void;
+  /** What to suggest; the default suits signed-in pages. */
+  message?: string;
+}) {
   useEffect(() => {
     // Sentry picks this up once it's wired in (Phase 5).
     console.error(error);
@@ -18,9 +27,7 @@ export function RouteError({ error, retry }: { error: unknown; retry: () => void
         <AlertCircle aria-hidden className="size-6" />
       </span>
       <h1 className="text-title">Something went wrong</h1>
-      <p className="max-w-sm text-body-sm text-muted-foreground">
-        This page didn&rsquo;t load. Try again, and if it keeps happening, sign out and back in.
-      </p>
+      <p className="max-w-sm text-body-sm text-muted-foreground">{message}</p>
       <Button onClick={() => retry()} className="h-11 px-4 text-label">
         Try again
       </Button>
