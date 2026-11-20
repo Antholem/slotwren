@@ -13,6 +13,11 @@ export type CalendarEvent = {
   description: string;
   location: string | null;
   url: string | null;
+  /**
+   * Bumped when the event changes (a reschedule), so calendars that already
+   * have it update it in place. Default 0.
+   */
+  sequence?: number;
 };
 
 /** 20261124T020000Z */
@@ -61,6 +66,7 @@ export function buildIcs(event: CalendarEvent, now: Date): string {
     `DTSTAMP:${stamp(now)}`,
     `DTSTART:${stamp(event.start)}`,
     `DTEND:${stamp(event.end)}`,
+    `SEQUENCE:${event.sequence ?? 0}`,
     `SUMMARY:${escape(event.title)}`,
     `DESCRIPTION:${escape(event.description)}`,
     ...(event.location ? [`LOCATION:${escape(event.location)}`] : []),

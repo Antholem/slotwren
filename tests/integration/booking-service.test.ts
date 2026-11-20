@@ -546,7 +546,13 @@ describe("booking service", () => {
       );
       expect(result).toEqual({
         ok: true,
-        data: { id: created.id, startsAt: at("14:00"), endsAt: at("14:45"), staffId: a.staff.id },
+        data: {
+          id: created.id,
+          startsAt: at("14:00"),
+          endsAt: at("14:45"),
+          staffId: a.staff.id,
+          manageToken: null, // only a customer's change rotates the link
+        },
       });
       expect(await row(created.id)).toMatchObject({
         startsAt: at("14:00"),

@@ -40,3 +40,69 @@ describe("sendEmail without Resend", () => {
     expect(info.mock.calls.flat().join("\n")).toContain("secret-token");
   });
 });
+
+describe("fromAddress", () => {
+  it("sends as the business, from Slotwren's address", async () => {
+    const { fromAddress } = await import("@/server/email/send");
+    env.EMAIL_FROM = "Slotwren <bookings@slotwren.com>";
+    expect(fromAddress("Lumen Studio")).toBe('"Lumen Studio" <bookings@slotwren.com>');
+    expect(fromAddress()).toBe("Slotwren <bookings@slotwren.com>");
+    // Nothing that could break out of the header.
+    expect(fromAddress('Evil" <x@y.z>\r\nBcc: a@b.c')).toBe(
+      '"Evil x@y.zBcc: a@b.c" <bookings@slotwren.com>',
+    );
+    expect(fromAddress('"<>"')).toBe("Slotwren <bookings@slotwren.com>");
+  });
+});
+
+describe("sendEmail with Resend", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it("passes reply-to and attachments through", async () => {
+    vi.resetModules();
+    const send = vi.fn().mockResolvedValue({ error: null });
+    vi.doMock("resend", () => ({
+      Resend: class {
+        emails = { send };
+      },
+    }));
+    const keyed = { ...env, RESEND_API_KEY: "re_test", EMAIL_FROM: "Slotwren <b@slotwren.com>" };
+    vi.doMock("@/env", () => ({ env: keyed }));
+    const fresh = await import("@/server/email/send");
+    const result = await fresh.sendEmail({
+      ...email,
+      fromName: "Lumen Studio",
+      replyTo: "hello@lumen.example",
+      attachments: [
+        { filename: "booking.ics", content: "BEGIN:VCALENDAR", contentType: "text/calendar" },
+      ],
+    });
+    expect(result).toEqual({ delivered: true });
+    expect(send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        from: '"Lumen Studio" <b@slotwren.com>',
+        replyTo: "hello@lumen.example",
+        attachments: [
+          {
+            filename: "booking.ics",
+            content: Buffer.from("BEGIN:VCALENDAR"),
+            contentType: "text/calendar",
+          },
+        ],
+      }),
+    );
+  });
+
+  it("reports a failure instead of throwing", async () => {
+    vi.resetModules();
+    vi.doMock("resend", () => ({
+      Resend: class {
+        emails = { send: vi.fn().mockRejectedValue(new Error("network")) };
+      },
+    }));
+    vi.doMock("@/env", () => ({ env: { ...env, RESEND_API_KEY: "re_test" } }));
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const fresh = await import("@/server/email/send");
+    expect(await fresh.sendEmail(email)).toEqual({ delivered: false, reason: "failed" });
+  });
+});

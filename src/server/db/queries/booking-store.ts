@@ -54,6 +54,7 @@ export type LockedBooking = {
 
 export type BookingSummary = {
   id: string;
+  businessId: string;
   code: string;
   startsAt: Date;
   endsAt: Date;
@@ -65,6 +66,21 @@ export type BookingSummary = {
   businessName: string;
   businessSlug: string;
   businessTimezone: string;
+  status: BookingStatus;
+  source: "page" | "widget" | "ai" | "manual";
+  priceCents: number;
+  durationMin: number;
+  customerPhone: string | null;
+  customerNotes: string | null;
+  createdAt: Date;
+  businessBrandColor: string;
+  businessAddress: string | null;
+  businessLogoUrl: string | null;
+  businessContactEmail: string | null;
+  businessCurrency: string;
+  cancellationWindowHours: number;
+  /** settings.notifications.ownerNewBookingEmail; on unless turned off. */
+  ownerNewBookingEmail: boolean;
 };
 
 export type BookingInsert = {
@@ -282,6 +298,8 @@ export function bookingStore(tx: Transaction, businessId: string) {
         endsAt: Date;
         bufferedStart: Date;
         bufferedEnd: Date;
+        /** A new manage-link hash (a customer's change rotates the link). */
+        manageTokenHash?: string;
       },
     ): Promise<boolean> {
       const rows = await tx
@@ -328,6 +346,7 @@ export function bookingStore(tx: Transaction, businessId: string) {
       const [row] = await tx
         .select({
           id: bookings.id,
+          businessId: bookings.businessId,
           code: bookings.code,
           startsAt: bookings.startsAt,
           endsAt: bookings.endsAt,
@@ -339,6 +358,20 @@ export function bookingStore(tx: Transaction, businessId: string) {
           businessName: businesses.name,
           businessSlug: businesses.slug,
           businessTimezone: businesses.timezone,
+          status: bookings.status,
+          source: bookings.source,
+          priceCents: bookings.priceCents,
+          durationMin: services.durationMin,
+          customerPhone: customers.phone,
+          customerNotes: bookings.customerNotes,
+          createdAt: bookings.createdAt,
+          businessBrandColor: businesses.brandColor,
+          businessAddress: businesses.address,
+          businessLogoUrl: businesses.logoUrl,
+          businessContactEmail: businesses.contactEmail,
+          businessCurrency: businesses.currency,
+          cancellationWindowHours: businesses.cancellationWindowHours,
+          ownerNewBookingEmail: sql<boolean>`coalesce((${businesses.settings} -> 'notifications' ->> 'ownerNewBookingEmail')::boolean, true)`,
         })
         .from(bookings)
         .innerJoin(
