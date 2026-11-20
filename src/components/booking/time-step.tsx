@@ -1,6 +1,7 @@
 "use client";
 
 import { CalendarX2, ChevronLeft, ChevronRight, CircleAlert, Clock } from "lucide-react";
+import type { Route } from "next";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -41,6 +42,15 @@ type Props = {
   state: BookingState;
   /** The request time, from the server. */
   now: string;
+  /**
+   * Where each state lives. Default: the booking page (/b/[slug]). The
+   * manage page maps "details" to its confirm step.
+   */
+  hrefFor?: (state: Partial<BookingState>) => Route;
+  /** Rescheduling: the manage token, so the booking's own time shows as free. */
+  manageToken?: string;
+  /** The four-step progress bar (off when rescheduling). */
+  showProgress?: boolean;
 };
 
 /**
@@ -66,6 +76,9 @@ function TimeStepIn({
   canChooseStaff,
   state,
   now,
+  hrefFor = (next) => bookingHref(slug, next),
+  manageToken,
+  showProgress,
 }: Props & { zone: string }) {
   const router = useRouter();
   const clock = zoneClock(zone);
@@ -96,6 +109,7 @@ function TimeStepIn({
       from: new Date(clock.instant(weekStart, "00:00")).toISOString(),
       to: new Date(clock.instant(nextDate(weekStart, 7), "00:00")).toISOString(),
       tz: zone,
+      ...(manageToken ? { manage: manageToken } : {}),
     });
     fetch(`/api/slots/${slug}?${search}`, { signal: controller.signal })
       .then(async (response): Promise<Loaded> =>
@@ -108,7 +122,7 @@ function TimeStepIn({
         if (loaded) setWeeks((all) => ({ ...all, [key]: loaded }));
       });
     return () => controller.abort();
-  }, [week, key, slug, service.id, state.staffId, weekStart, zone, clock]);
+  }, [week, key, slug, service.id, state.staffId, weekStart, zone, clock, manageToken]);
 
   const day = week && week !== "error" ? week.days[selectedDate] : undefined;
   const available = day?.available ?? [];
@@ -117,7 +131,7 @@ function TimeStepIn({
 
   const go = (date: string, start: string | null = null) => {
     setPicked(start);
-    router.replace(bookingHref(slug, { ...state, date, start: null, taken: null }), {
+    router.replace(hrefFor({ ...state, date, start: null, taken: null }), {
       scroll: false,
     });
   };
@@ -131,7 +145,7 @@ function TimeStepIn({
     onClick: () =>
       chosen &&
       router.push(
-        bookingHref(slug, {
+        hrefFor({
           ...state,
           step: "details",
           date: selectedDate,
@@ -150,6 +164,7 @@ function TimeStepIn({
       canChooseStaff={canChooseStaff}
       state={state}
       now={now}
+      showProgress={showProgress}
       chosen={chosen}
       zone={zone}
       action={action}
@@ -224,7 +239,7 @@ function TimeStepIn({
               onNext={(slot) => go(slot.date, slot.start)}
               staffHref={
                 canChooseStaff
-                  ? bookingHref(slug, { ...state, step: "staff", start: null, taken: null })
+                  ? hrefFor({ ...state, step: "staff", start: null, taken: null })
                   : null
               }
             />
@@ -264,6 +279,7 @@ function TimeStepFrame({
   timezoneNote,
   loading,
   children,
+  showProgress = true,
 }: Props & {
   chosen?: SlotChip | null;
   zone?: string;
@@ -322,7 +338,7 @@ function TimeStepFrame({
         />
       }
     >
-      <StepProgress step="time" />
+      {showProgress && <StepProgress step="time" />}
       <h2 className="hidden text-display lg:block">Pick a date and time</h2>
       {header}
       {strip}
@@ -666,7 +682,7 @@ function NoTimes({
   zone: string;
   now: Date;
   onNext: (slot: SlotChip) => void;
-  staffHref: ReturnType<typeof bookingHref> | null;
+  staffHref: Route | null;
 }) {
   const why = full
     ? `${dateLabel} is fully booked.`

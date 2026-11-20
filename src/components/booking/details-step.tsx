@@ -30,9 +30,13 @@ import {
 } from "@/lib/validation/booking";
 
 import { LocalRange, LocalTime } from "./local-time";
+import { rememberManageToken } from "./manage-link";
 import { Policy, StepLayout, StepProgress, SummaryCard } from "./booking-layout";
 
-type BookAction = (slug: string, input: unknown) => Promise<Result<{ bookingId: string }, string>>;
+type BookAction = (
+  slug: string,
+  input: unknown,
+) => Promise<Result<{ bookingId: string; manageToken: string }, string>>;
 
 /** Step 4: who's coming, then Confirm (docs/design/booking-flow/4-your-details). */
 export function DetailsStep({
@@ -89,6 +93,7 @@ export function DetailsStep({
         customerTimezone: zone ?? undefined,
       });
       if (result.ok) {
+        rememberManageToken(result.data.bookingId, result.data.manageToken);
         router.push(`/b/${slug}/booked/${result.data.bookingId}` as Route);
         return;
       }

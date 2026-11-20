@@ -7,6 +7,7 @@ import { Suspense } from "react";
 
 import { BookingTopBar, PoweredBy } from "@/components/booking/booking-layout";
 import { LocalRange, LocalTime } from "@/components/booking/local-time";
+import { ManageLink } from "@/components/booking/manage-link";
 import { Button } from "@/components/ui/button";
 import { brandThemeCss } from "@/lib/brand-theme";
 import { bookingHref } from "@/lib/booking-page";
@@ -96,7 +97,7 @@ async function Booked({ params }: Pick<PageProps<"/b/[slug]/booked/[bookingId]">
           <p className="max-w-sm text-body text-muted-foreground">
             {cancelled
               ? `This booking with ${business.name} was cancelled.`
-              : `Keep your booking code handy. To change or cancel, get in touch with ${business.name}.`}
+              : "We've emailed your confirmation. Reschedule or cancel any time from Manage booking."}
           </p>
         </div>
 
@@ -159,6 +160,7 @@ async function Booked({ params }: Pick<PageProps<"/b/[slug]/booked/[bookingId]">
                 </Button>
               </div>
             </section>
+            <ManageLink bookingId={booking.id} />
             <p className="text-center text-body-sm text-muted-foreground">
               {freeUntil <= now ? (
                 `It's within ${business.cancellationWindowHours} h of your appointment, so contact ${business.name} to change it.`

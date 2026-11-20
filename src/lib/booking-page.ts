@@ -221,3 +221,63 @@ export function relativeDay(instant: string | Date, zone: string, now: Date): st
     ? formatInZone(date, zone, "EEE")
     : formatInZone(date, zone, "EEE d MMM");
 }
+
+// ── The manage page (/m/[token]) ────────────────────────────────────────
+
+export type ManageStep = "view" | "time" | "confirm";
+
+export type ManageState = {
+  step: ManageStep;
+  /** Customer-local date on the time step. */
+  date: string | null;
+  /** The new start being confirmed. */
+  start: string | null;
+  /** A start that was just taken. */
+  taken: string | null;
+  /** Banners after a change: "moved" or "cancelled". */
+  done: "moved" | "cancelled" | null;
+};
+
+/** The manage page's URL state. Confirm without a start falls back to the times. */
+export function parseManageState(params: SearchParams): ManageState {
+  const stepParam = one(params.step);
+  const dateParam = one(params.date);
+  const startParam = one(params.start);
+  const takenParam = one(params.taken);
+  const doneParam = one(params.done);
+  const start = isInstant(startParam) ? new Date(startParam).toISOString() : null;
+  let step: ManageStep = stepParam === "time" || stepParam === "confirm" ? stepParam : "view";
+  if (step === "confirm" && !start) step = "time";
+  return {
+    step,
+    date: dateParam && DATE.test(dateParam) ? dateParam : null,
+    start,
+    taken: isInstant(takenParam) ? new Date(takenParam).toISOString() : null,
+    done: doneParam === "moved" || doneParam === "cancelled" ? doneParam : null,
+  };
+}
+
+/** A manage-page URL. The time picker's "details" step is our "confirm". */
+export function manageHref(
+  token: string,
+  state: Partial<Omit<ManageState, "step">> & { step?: ManageStep | Step },
+): Route {
+  const params = new URLSearchParams();
+  const step = state.step === "details" ? "confirm" : state.step;
+  if (step === "time" || step === "confirm") params.set("step", step);
+  if (state.date) params.set("date", state.date);
+  if (state.start && step === "confirm") params.set("start", state.start);
+  if (state.taken) params.set("taken", state.taken);
+  if (state.done) params.set("done", state.done);
+  const query = params.toString();
+  return `/m/${token}${query ? `?${query}` : ""}` as Route;
+}
+
+/** "about 22 h from now", "about 3 days from now", "in less than an hour". */
+export function fromNow(instant: Date, now: Date): string {
+  const minutes = (instant.getTime() - now.getTime()) / 60_000;
+  if (minutes < 60) return "in less than an hour";
+  const hours = Math.round(minutes / 60);
+  if (hours < 48) return `about ${hours} h from now`;
+  return `about ${Math.round(hours / 24)} days from now`;
+}

@@ -9,6 +9,9 @@ import {
   nearestOpenings,
   parseBookingState,
   periodOf,
+  fromNow,
+  manageHref,
+  parseManageState,
   relativeDay,
   type SlotChip,
 } from "@/lib/booking-page";
@@ -207,5 +210,56 @@ describe("relativeDay", () => {
   it("depends on where the customer is", () => {
     // 16:30 UTC is still the 18th in London.
     expect(relativeDay("2026-11-18T16:30:00Z", "Europe/London", now)).toBe("Today");
+  });
+});
+
+describe("manage page state", () => {
+  const TOKEN = "t".repeat(43);
+
+  it("reads the view, time and confirm steps", () => {
+    expect(parseManageState({})).toEqual({
+      step: "view",
+      date: null,
+      start: null,
+      taken: null,
+      done: null,
+    });
+    expect(parseManageState({ step: "time", date: "2026-11-24", taken: START })).toMatchObject({
+      step: "time",
+      date: "2026-11-24",
+      taken: START,
+    });
+    expect(parseManageState({ step: "confirm", start: START })).toMatchObject({
+      step: "confirm",
+      start: START,
+    });
+    expect(parseManageState({ step: "confirm" }).step).toBe("time");
+    expect(parseManageState({ step: "pay", done: "refunded" })).toMatchObject({
+      step: "view",
+      done: null,
+    });
+  });
+
+  it("maps the time picker's details step to confirm, and round-trips", () => {
+    const href = manageHref(TOKEN, { step: "details", date: "2026-11-24", start: START });
+    expect(href).toBe(
+      `/m/${TOKEN}?step=confirm&date=2026-11-24&start=${encodeURIComponent(START)}`,
+    );
+    const params = Object.fromEntries(new URL(href, "https://x.test").searchParams);
+    expect(parseManageState(params)).toMatchObject({ step: "confirm", start: START });
+    expect(manageHref(TOKEN, { step: "time", start: START })).toBe(`/m/${TOKEN}?step=time`);
+    expect(manageHref(TOKEN, { done: "moved" })).toBe(`/m/${TOKEN}?done=moved`);
+  });
+});
+
+describe("fromNow", () => {
+  const now = new Date("2026-11-20T00:00:00Z");
+  const later = (minutes: number) => new Date(now.getTime() + minutes * 60_000);
+
+  it("says roughly how long is left", () => {
+    expect(fromNow(later(30), now)).toBe("in less than an hour");
+    expect(fromNow(later(22 * 60 + 10), now)).toBe("about 22 h from now");
+    expect(fromNow(later(47 * 60), now)).toBe("about 47 h from now");
+    expect(fromNow(later(3 * 24 * 60), now)).toBe("about 3 days from now");
   });
 });
