@@ -8,7 +8,23 @@ import { env } from "@/env";
 export type SendResult =
   { delivered: true } | { delivered: false; reason: "not_configured" | "failed" };
 
+export type EmailAttachment = { filename: string; content: string; contentType: string };
+
 let client: Resend | null = null;
+
+/**
+ * "Lumen Studio <bookings@slotwren.com>": EMAIL_FROM's address under the
+ * business's name, stripped of anything that could break the header.
+ */
+export function fromAddress(name?: string): string {
+  if (!name) return env.EMAIL_FROM;
+  const address = /<([^>]+)>/.exec(env.EMAIL_FROM)?.[1] ?? env.EMAIL_FROM;
+  const safe = name
+    .replace(/["<>\r\n\\]/g, "")
+    .trim()
+    .slice(0, 60);
+  return safe ? `"${safe}" <${address}>` : env.EMAIL_FROM;
+}
 
 /**
  * Send a transactional email with Resend. Without RESEND_API_KEY (local dev,
@@ -24,15 +40,30 @@ export async function sendEmail({
   subject,
   react,
   logLines,
+  fromName,
+  replyTo,
+  attachments,
 }: {
-  to: string;
+  to: string | string[];
   subject: string;
   react: ReactElement;
   /** Logged in development when email isn't configured, e.g. the link inside. */
   logLines: string[];
+  /** Shown as the sender: the business's name. */
+  fromName?: string;
+  /** Where replies go: the business, not Slotwren. */
+  replyTo?: string | null;
+  attachments?: EmailAttachment[];
 }): Promise<SendResult> {
   if (!env.RESEND_API_KEY) {
-    const details = env.NODE_ENV === "development" ? [`To: ${to}`, ...logLines] : [];
+    const details =
+      env.NODE_ENV === "development"
+        ? [
+            `To: ${[to].flat().join(", ")}`,
+            ...logLines,
+            ...(attachments ?? []).map((a) => `Attachment: ${a.filename}`),
+          ]
+        : [];
     console.info(
       [`[email] RESEND_API_KEY not set; not sending "${subject}".`, ...details].join("\n  "),
     );
@@ -41,7 +72,22 @@ export async function sendEmail({
 
   client ??= new Resend(env.RESEND_API_KEY);
   try {
-    const { error } = await client.emails.send({ from: env.EMAIL_FROM, to, subject, react });
+    const { error } = await client.emails.send({
+      from: fromAddress(fromName),
+      to,
+      subject,
+      react,
+      ...(replyTo ? { replyTo } : {}),
+      ...(attachments?.length
+        ? {
+            attachments: attachments.map((a) => ({
+              filename: a.filename,
+              content: Buffer.from(a.content, "utf8"),
+              contentType: a.contentType,
+            })),
+          }
+        : {}),
+    });
     if (error) {
       console.error("[email] Resend rejected the email", { subject, name: error.name });
       return { delivered: false, reason: "failed" };

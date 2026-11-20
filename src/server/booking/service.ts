@@ -2,22 +2,18 @@ import "server-only";
 
 import { z } from "zod";
 
-import { env } from "@/env";
-import { formatInZone } from "@/lib/dates";
 import { err, ok, type Result } from "@/lib/result";
 import { isValidTimeZone } from "@/lib/timezones";
 import { customerSchema, notesSchema, optionalText } from "@/lib/validation/booking";
-import { zoneClock } from "@/lib/zone-clock";
-import { BookingCancelledEmail } from "@/emails/booking-cancelled";
 import type { Actor } from "@/server/catalog/services";
 import { isUniqueViolation, pgError } from "@/server/db/errors";
 import type { BookingStore, BookingSummary, SlotContext } from "@/server/db/queries/booking-store";
 import { withMemberBookings } from "@/server/db/queries/bookings";
 import { findBookingByManageToken, withPublicBookings } from "@/server/db/queries/public/bookings";
-import { sendEmail } from "@/server/email/send";
 
 import { generateBookingCode } from "./codes";
-import { getAvailableSlots, labelFor, type Slot } from "./slots";
+import { notifyBookingCancelled, notifyBookingCreated, notifyBookingRescheduled } from "./notify";
+import { getAvailableSlots, type Slot } from "./slots";
 import { generateToken, hashToken } from "./tokens";
 
 /*
@@ -116,7 +112,14 @@ export type CreatedBooking = {
   priceCents: number;
 };
 
-export type MovedBooking = { id: string; startsAt: Date; endsAt: Date; staffId: string };
+export type MovedBooking = {
+  id: string;
+  startsAt: Date;
+  endsAt: Date;
+  staffId: string;
+  /** The new manage-link token after a customer's change (the old link stops working). */
+  manageToken: string | null;
+};
 
 export type CancelledBooking = {
   id: string;
@@ -205,7 +208,9 @@ export async function createBooking(
   const values = parsed.data;
   const member = channel.kind === "member";
 
-  const work = async (store: BookingStore): Promise<CreatedBooking> => {
+  const work = async (
+    store: BookingStore,
+  ): Promise<{ created: CreatedBooking; summary: BookingSummary | null }> => {
     const context = await store.loadSlotContext({
       serviceId: values.serviceId,
       from: values.startsAt,
@@ -255,25 +260,30 @@ export async function createBooking(
     });
     const person = context.staff.find((s) => s.id === slot.staffId)!;
     return {
-      id,
-      code,
-      manageToken,
-      startsAt: slot.start,
-      endsAt: slot.end,
-      staffId: slot.staffId,
-      staffName: person.name,
-      serviceName: context.service.name,
-      priceCents: context.service.priceCents,
+      created: {
+        id,
+        code,
+        manageToken,
+        startsAt: slot.start,
+        endsAt: slot.end,
+        staffId: slot.staffId,
+        staffName: person.name,
+        serviceName: context.service.name,
+        priceCents: context.service.priceCents,
+      },
+      summary: await store.summary(id),
     };
   };
 
   // Booking codes are random; on the rare clash with an existing one, retry.
   for (let attempt = 1; ; attempt++) {
     try {
-      const created =
+      const { created, summary } =
         channel.kind === "public"
           ? await withPublicBookings(channel.businessId, work)
           : await withMemberBookings(channel.actor.claims, channel.actor.businessId, work);
+      // After the commit, and never able to undo it.
+      if (summary) await notifyBookingCreated(summary, created.manageToken, now);
       return ok(created);
     } catch (error) {
       if (attempt < 4 && isUniqueViolation(error, "bookings_business_code")) continue;
@@ -348,7 +358,7 @@ export async function rescheduleBooking(
   if (!opened) return err("not_found", BOOKING_MESSAGES.bookingGone);
 
   try {
-    const moved = await opened.run(async (store) => {
+    const result = await opened.run(async (store) => {
       const booking = await lockForChange(store, opened, now);
       const context = await store.loadSlotContext({
         serviceId: booking.serviceId,
@@ -365,11 +375,15 @@ export async function rescheduleBooking(
       });
       if (!slot) throw new Rollback(err("slot_unavailable", BOOKING_MESSAGES.unavailable));
 
+      // A customer's change retires their manage link: the email carries the
+      // new one. (Members can't rotate it: the column isn't granted to them.)
+      const manageToken = opened.byCustomer ? generateToken() : null;
       const updated = await store.moveBooking(booking.id, {
         staffId: slot.staffId,
         startsAt: slot.start,
         endsAt: slot.end,
         ...buffered(context, slot),
+        ...(manageToken ? { manageTokenHash: hashToken(manageToken) } : {}),
       });
       if (!updated) throw new Rollback(err("forbidden", BOOKING_MESSAGES.forbidden));
       await store.addEvent({
@@ -381,9 +395,30 @@ export async function rescheduleBooking(
           to: { startsAt: slot.start.toISOString(), staffId: slot.staffId },
         },
       });
-      return { id: booking.id, startsAt: slot.start, endsAt: slot.end, staffId: slot.staffId };
+      return {
+        moved: {
+          id: booking.id,
+          startsAt: slot.start,
+          endsAt: slot.end,
+          staffId: slot.staffId,
+          manageToken,
+        },
+        previousStart: booking.startsAt,
+        summary: await store.summary(booking.id),
+      };
     });
-    return ok(moved);
+    if (result.summary) {
+      await notifyBookingRescheduled(
+        result.summary,
+        {
+          previousStart: result.previousStart,
+          manageToken: result.moved.manageToken,
+          byCustomer: opened.byCustomer,
+        },
+        now,
+      );
+    }
+    return ok(result.moved);
   } catch (error) {
     return settleError(error);
   }
@@ -435,33 +470,11 @@ export async function cancelBooking(
 
   const id = summary?.id ?? opened.bookingId;
   const code = summary?.code ?? "";
-  if (!notify || !summary) return ok({ id, code, notified: null });
-  const sent = await sendCancellation(summary, customerMessage);
-  return ok({ id, code, notified: sent });
-}
-
-/** "Thu 12 Nov · 10:00 GMT+8", in the customer's timezone when we know it. */
-export function bookingWhen(startsAt: Date, zone: string): string {
-  const label = labelFor(startsAt.getTime(), zoneClock(zone)).zone;
-  return `${formatInZone(startsAt, zone, "EEE d MMM · HH:mm")} ${label}`;
-}
-
-async function sendCancellation(summary: BookingSummary, message: string | null) {
-  const zone = summary.customerTimezone ?? summary.businessTimezone;
-  const result = await sendEmail({
-    to: summary.customerEmail,
-    subject: `Cancelled: ${summary.serviceName} at ${summary.businessName}`,
-    react: BookingCancelledEmail({
-      businessName: summary.businessName,
-      customerName: summary.customerName,
-      serviceName: summary.serviceName,
-      staffName: summary.staffName,
-      when: bookingWhen(summary.startsAt, zone),
-      code: summary.code,
-      reason: message,
-      bookAgainUrl: new URL(`/b/${summary.businessSlug}`, env.NEXT_PUBLIC_APP_URL).toString(),
-    }),
-    logLines: [`Booking ${summary.code} cancelled`],
+  // Customers always get a receipt; the team chooses whether to tell them.
+  if (!summary || (!notify && !opened.byCustomer)) return ok({ id, code, notified: null });
+  const sent = await notifyBookingCancelled(summary, {
+    byBusiness: !opened.byCustomer,
+    message: customerMessage,
   });
-  return result.delivered;
+  return ok({ id, code, notified: sent });
 }

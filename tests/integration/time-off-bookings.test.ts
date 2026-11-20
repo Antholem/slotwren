@@ -179,12 +179,14 @@ describe("time off over existing bookings", () => {
     }
 
     expect(sent.map((email) => [email.to, email.subject])).toEqual([
-      [a.customer.email, `Cancelled: Haircut at ${a.business.name}`],
-      [a.customer.email, `Cancelled: Haircut at ${a.business.name}`],
+      [a.customer.email, "Cancelled: Haircut, Tue 1 Dec at 10:00"],
+      [a.customer.email, "Cancelled: Haircut, Tue 1 Dec at 11:00"],
     ]);
     const html = sent[0]!.html;
     expect(html).toContain(first.code);
-    expect(html).toContain("Tue 1 Dec · 10:00 GMT+8");
+    expect(html).toContain("Tuesday, 1 December");
+    expect(html).toContain("10:00 – 10:45");
+    expect(html).toContain("Your booking was cancelled");
     expect(html).toContain("Mia isn&#x27;t available at that time any more.");
     expect(html).toContain(`/b/${a.business.slug}`);
     expect(html).not.toContain("Dentist");

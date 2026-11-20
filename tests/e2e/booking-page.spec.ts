@@ -1,9 +1,17 @@
-import { expect, type Locator, type Page, test } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import { and, eq } from "drizzle-orm";
 
 import * as schema from "@/server/db/schema";
 
-import { bookingValues, connectTestDb, createFixtureBusiness } from "../support/db";
+import {
+  bookableBusinesses,
+  choose,
+  pressContinue,
+  timeChips,
+  toTimes,
+  visibleButton,
+} from "../support/booking-flow";
+import { bookingValues } from "../support/db";
 import { collectConsoleErrors, expectNoAxeViolations } from "../support/e2e";
 
 /*
@@ -11,84 +19,13 @@ import { collectConsoleErrors, expectNoAxeViolations } from "../support/e2e";
  * phone (both Playwright projects). Needs DATABASE_URL (.env.local).
  */
 
-const { db, close } = connectTestDb();
-type Fixture = Awaited<ReturnType<typeof createFixtureBusiness>>;
-const fixtures: Fixture[] = [];
-test.afterAll(async () => {
-  for (const fixture of fixtures) await fixture.cleanup();
-  await close();
-});
+const businesses = bookableBusinesses();
+const { db } = businesses;
+test.afterAll(() => businesses.cleanup());
+const bookableBusiness = () => businesses.create();
 
 // The customer is in the business's timezone unless a test says otherwise.
 test.use({ timezoneId: "Asia/Manila" });
-
-const CRIMSON = "#BE123C";
-
-/** A live business: Mia does the haircut (45 min + 15 min clean-up), 08:00–20:00 daily. */
-async function bookableBusiness() {
-  const fixture = await createFixtureBusiness(db);
-  fixtures.push(fixture);
-  const businessId = fixture.business.id;
-  await db
-    .update(schema.businesses)
-    .set({
-      onboardedAt: new Date(),
-      setupStep: 4,
-      brandColor: CRIMSON,
-      address: "12 Lumen Lane, Makati",
-      minNoticeMin: 0,
-      settings: {
-        openingHours: [0, 1, 2, 3, 4, 5, 6].map((weekday) => ({
-          weekday,
-          start: "08:00",
-          end: "20:00",
-        })),
-      },
-    })
-    .where(eq(schema.businesses.id, businessId));
-  await db
-    .insert(schema.staffServices)
-    .values({ businessId, staffId: fixture.staff.id, serviceId: fixture.service.id });
-  await db.insert(schema.availabilityRules).values(
-    [0, 1, 2, 3, 4, 5, 6].map((weekday) => ({
-      businessId,
-      staffId: fixture.staff.id,
-      weekday,
-      startTime: "08:00",
-      endTime: "20:00",
-    })),
-  );
-  return fixture;
-}
-
-/** The visible one of a button that appears in both the phone bar and the desktop card. */
-const visibleButton = (page: Page, name: string) =>
-  page.locator("button:visible", { hasText: name }).first();
-const timeChips = (page: Page) => page.getByRole("radio", { name: /^\d{2}:\d{2}$/ });
-
-/** Pick a card or chip the way a customer does: tap its label (the radio is visually hidden). */
-async function choose(radio: Locator) {
-  await radio.locator("xpath=ancestor::label[1]").click();
-  await expect(radio).toBeChecked();
-}
-
-async function pressContinue(page: Page) {
-  const button = visibleButton(page, "Continue");
-  await expect(button).toBeEnabled();
-  await button.focus();
-  await page.keyboard.press("Enter");
-}
-
-/** Service and staff steps, landing on the times. */
-async function toTimes(page: Page, fixture: Fixture) {
-  await page.goto(`/b/${fixture.business.slug}`);
-  await choose(page.getByRole("radio", { name: /Haircut/ }));
-  await pressContinue(page);
-  await expect(page).toHaveURL(/step=staff/);
-  await pressContinue(page);
-  await expect(page).toHaveURL(/step=time/);
-  await expect(timeChips(page).first()).toBeAttached();
-}
 
 test("a customer books with the keyboard and sees the confirmation", async ({ page }) => {
   test.setTimeout(120_000);

@@ -176,7 +176,11 @@ These are hard rules. If a task seems to need breaking one, stop and ask.
   bookings never move. A coarser grid refuses off-grid staff hours unless the owner asks to
   round them inward (`roundRangeInward`).
 - **Money.** Integer cents plus the business's `currency`. `0` displays as "Free".
-- **Tokens** (manage links, invites): random, returned once, stored SHA-256 hashed.
+- **Tokens** (manage links, invites): random, returned once, stored SHA-256 hashed. A
+  customer's own reschedule rotates the manage token (the email carries the new link); the
+  confirmation page gets it once from `bookAction` and keeps it in `sessionStorage`.
+- **Email** goes out from `booking/notify.ts` after a change commits, never inside the
+  transaction, and never fails the booking. Templates in `src/emails` share `components/`.
 - **Commits.** Small, conventional (`feat(booking): …`, `fix(db): …`, `test: …`,
   `chore: …`, `docs: …`).
 

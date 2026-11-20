@@ -14,6 +14,10 @@ export function collectConsoleErrors(page: Page) {
 }
 
 export async function expectNoAxeViolations(page: Page) {
+  // Next streams metadata: wait for the <title> before judging the document.
+  await page
+    .waitForFunction(() => document.title.trim() !== "", null, { timeout: 10_000 })
+    .catch(() => {}); // a page with no title should still fail the scan below
   // Judge the settled UI: a toast or sheet mid-fade has text at partial opacity.
   await page
     .waitForFunction(() => document.getAnimations().every((a) => a.playState !== "running"), null, {

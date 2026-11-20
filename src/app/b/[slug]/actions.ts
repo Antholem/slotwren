@@ -13,12 +13,15 @@ import { getPublicBusinessBySlug } from "@/server/db/queries/public/business";
 export async function bookAction(
   slug: string,
   input: unknown,
-): Promise<Result<{ bookingId: string }, BookingError>> {
+): Promise<Result<{ bookingId: string; manageToken: string }, BookingError>> {
   const business = SLUG_PATTERN.test(slug) ? await getPublicBusinessBySlug(slug) : null;
   if (!business) return err("not_found", BOOKING_MESSAGES.serviceGone);
   const result = await createBooking(
     { kind: "public", businessId: business.id, source: "page" },
     input,
   );
-  return result.ok ? ok({ bookingId: result.data.id }) : result;
+  // The manage token goes back to this customer once; only its hash is stored.
+  return result.ok
+    ? ok({ bookingId: result.data.id, manageToken: result.data.manageToken })
+    : result;
 }

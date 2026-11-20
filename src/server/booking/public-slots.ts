@@ -25,9 +25,10 @@ async function context(
   businessId: string,
   serviceId: string,
   window: Window,
+  excludeBookingId?: string,
 ): Promise<SlotContext | null> {
   const loaded = await withPublicBookings(businessId, (store) =>
-    store.loadSlotContext({ serviceId, ...window }),
+    store.loadSlotContext({ serviceId, ...window, excludeBookingId }),
   );
   if (!loaded || !loaded.service.active || loaded.service.archived) return null;
   return loaded;
@@ -55,12 +56,13 @@ async function firstOpening(
   from: Date,
   now: Date,
   displayTimezone: string,
+  excludeBookingId?: string,
 ): Promise<Map<string, Slot>> {
   const found = new Map<string, Slot>();
   let start = from;
   for (let i = 0; i < 30 && found.size < staffIds.length; i++) {
     const end = new Date(start.getTime() + CHUNK_DAYS * DAY_MS);
-    const ctx = await context(businessId, serviceId, { from: start, to: end });
+    const ctx = await context(businessId, serviceId, { from: start, to: end }, excludeBookingId);
     if (!ctx) return found;
     const limit = bookableUntil(ctx, now);
     for (const staffId of staffIds) {
@@ -95,6 +97,7 @@ export async function getPublicSlots({
   to,
   timezone,
   now = new Date(),
+  excludeBookingId,
 }: {
   businessId: string;
   serviceId: string;
@@ -103,8 +106,10 @@ export async function getPublicSlots({
   to: Date;
   timezone: string;
   now?: Date;
+  /** A booking being moved: its own time counts as free. */
+  excludeBookingId?: string;
 }): Promise<SlotsResponse | null> {
-  const ctx = await context(businessId, serviceId, { from, to });
+  const ctx = await context(businessId, serviceId, { from, to }, excludeBookingId);
   if (!ctx) return null;
   const { available, taken } = getSlotGrid({
     business: ctx.business,
@@ -122,9 +127,9 @@ export async function getPublicSlots({
   for (const slot of available) day(slot.local.date).available.push(chip(slot, slot.staffId));
   for (const slot of taken) day(slot.local.date).taken.push(chip(slot, null));
 
-  const next = (await firstOpening(businessId, serviceId, [staffId], to, now, timezone)).get(
-    staffId,
-  );
+  const next = (
+    await firstOpening(businessId, serviceId, [staffId], to, now, timezone, excludeBookingId)
+  ).get(staffId);
   return { days, next: next ? chip(next, next.staffId) : null };
 }
 

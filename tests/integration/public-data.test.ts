@@ -7,6 +7,7 @@ import { getNextOpenings, getPublicSlots } from "@/server/booking/public-slots";
 import { getBookingConfirmation, getBookingPage } from "@/server/db/queries/public/booking-page";
 import { findBookingByManageToken } from "@/server/db/queries/public/bookings";
 import { getPublicBusinessBySlug } from "@/server/db/queries/public/business";
+import { getBusinessContact, getManagedBooking } from "@/server/db/queries/public/manage";
 import { getInvitePreview, getInviteRecipient } from "@/server/db/queries/public/invites";
 import * as schema from "@/server/db/schema";
 
@@ -336,6 +337,77 @@ describe("public data", () => {
       } finally {
         await other.cleanup();
       }
+    });
+  });
+
+  describe("the manage page", () => {
+    const manageToken = "manage-page-public-data-token-0123456789abcdef";
+    const manageHash = createHash("sha256").update(manageToken).digest("hex");
+    let bookingId: string;
+
+    beforeAll(async () => {
+      await db
+        .update(schema.businesses)
+        .set({ phone: "+63 2 8000 0000", contactEmail: "frontdesk@example.com" })
+        .where(eq(schema.businesses.id, fixture.business.id));
+      const [row] = await db
+        .insert(schema.bookings)
+        .values(
+          bookingValues(fixture, new Date("2026-11-05T02:00:00Z"), {
+            manageTokenHash: manageHash,
+            customerNotes: "Allergic to lavender",
+          }),
+        )
+        .returning({ id: schema.bookings.id });
+      bookingId = row!.id;
+    });
+
+    it("shows the token holder their booking: their name and notes, nothing private", async () => {
+      const managed = await getManagedBooking({ tokenHash: manageHash });
+      expect(managed).toMatchObject({
+        businessId: fixture.business.id,
+        id: bookingId,
+        status: "confirmed",
+        serviceName: "Haircut",
+        staffName: "Mia",
+        customerName: "Ana Santos",
+        customerNotes: "Allergic to lavender",
+      });
+      const json = JSON.stringify(managed);
+      for (const key of ["email", "phone", "manageTokenHash", "tokenHash", "notes", "customerId"]) {
+        expect(json, key).not.toContain(`"${key}"`);
+      }
+      for (const secret of [manageHash, fixture.customer.email, "PRIVATE NOTE"]) {
+        expect(json).not.toContain(secret);
+      }
+      expect(await getManagedBooking({ tokenHash: "0".repeat(64) })).toBeNull();
+    });
+
+    // The one public query with the business's phone and email: what a
+    // customer needs once online changes have closed.
+    it("gives the business's contact details, and nothing else", async () => {
+      const contact = await getBusinessContact({ businessId: fixture.business.id });
+      expect(contact).toEqual({
+        businessPhone: "+63 2 8000 0000",
+        businessEmail: "frontdesk@example.com",
+      });
+    });
+
+    it("lets a booking being moved see its own time as free", async () => {
+      const window = {
+        businessId: fixture.business.id,
+        serviceId: fixture.service.id,
+        staffId: fixture.staff.id,
+        from: new Date("2026-11-04T16:00:00Z"),
+        to: new Date("2026-11-05T16:00:00Z"),
+        timezone: "Asia/Manila",
+        now: new Date("2026-11-01T00:00:00Z"),
+      };
+      const own = "2026-11-05T02:00:00.000Z";
+      const before = await getPublicSlots(window);
+      expect(before!.days["2026-11-05"]!.taken.map((t) => t.start)).toContain(own);
+      const moving = await getPublicSlots({ ...window, excludeBookingId: bookingId });
+      expect(moving!.days["2026-11-05"]!.available.map((t) => t.start)).toContain(own);
     });
   });
 });

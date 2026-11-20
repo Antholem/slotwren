@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { buildIcs, type CalendarEvent, googleCalendarUrl } from "@/lib/calendar";
+import { zoneClock } from "@/lib/zone-clock";
 
 const event: CalendarEvent = {
   uid: "6f1c0d6e-0000-4000-8000-000000000001@slotwren.com",
@@ -77,5 +78,54 @@ describe("googleCalendarUrl", () => {
     expect(
       new URL(googleCalendarUrl({ ...event, location: null })).searchParams.has("location"),
     ).toBe(false);
+  });
+});
+
+describe("calendar times across DST", () => {
+  // The booking's start and end are instants the slot engine built from local
+  // wall time; the .ics and Google link must carry exactly those instants.
+  const ny = zoneClock("America/New_York");
+  const at = (date: string, time: string) => new Date(ny.instant(date, time));
+
+  it("writes a spring-forward-day appointment in UTC (EDT, UTC-4)", () => {
+    const ics = buildIcs(
+      { ...event, start: at("2026-03-08", "10:00"), end: at("2026-03-08", "10:45") },
+      NOW,
+    );
+    expect(ics).toContain("DTSTART:20260308T140000Z\r\n");
+    expect(ics).toContain("DTEND:20260308T144500Z\r\n");
+  });
+
+  it("writes the day before the change in EST (UTC-5)", () => {
+    const ics = buildIcs(
+      { ...event, start: at("2026-03-07", "10:00"), end: at("2026-03-07", "10:45") },
+      NOW,
+    );
+    expect(ics).toContain("DTSTART:20260307T150000Z\r\n");
+  });
+
+  it("keeps the two 01:30s on the night the clocks go back apart", () => {
+    const first = new Date("2026-11-01T05:30:00Z"); // 01:30 EDT
+    const second = new Date("2026-11-01T06:30:00Z"); // 01:30 EST
+    expect(ny.parts(first.getTime()).time).toBe("01:30");
+    expect(ny.parts(second.getTime()).time).toBe("01:30");
+    const end = (d: Date) => new Date(d.getTime() + 45 * 60_000);
+    expect(buildIcs({ ...event, start: first, end: end(first) }, NOW)).toContain(
+      "DTSTART:20261101T053000Z\r\nDTEND:20261101T061500Z\r\n",
+    );
+    expect(buildIcs({ ...event, start: second, end: end(second) }, NOW)).toContain(
+      "DTSTART:20261101T063000Z\r\nDTEND:20261101T071500Z\r\n",
+    );
+    expect(
+      new URL(googleCalendarUrl({ ...event, start: second, end: end(second) })).searchParams.get(
+        "dates",
+      ),
+    ).toBe("20261101T063000Z/20261101T071500Z");
+  });
+
+  it("numbers revisions so a moved booking updates the same event", () => {
+    expect(buildIcs(event, NOW)).toContain("SEQUENCE:0\r\n");
+    expect(buildIcs({ ...event, sequence: 3 }, NOW)).toContain(`UID:${event.uid}\r\n`);
+    expect(buildIcs({ ...event, sequence: 3 }, NOW)).toContain("SEQUENCE:3\r\n");
   });
 });
