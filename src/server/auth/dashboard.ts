@@ -7,7 +7,7 @@ import { cache } from "react";
 import { env } from "@/env";
 
 import type { RlsClaims } from "@/server/db/client";
-import { listMemberBusinesses, type MemberBusiness } from "@/server/db/queries/dashboard";
+import { getDashboardMember, type MemberBusiness } from "@/server/db/queries/dashboard";
 
 import { type CurrentUser, requireUser, rlsClaimsFor } from "./session";
 
@@ -20,6 +20,8 @@ export type DashboardContext = {
   business: MemberBusiness;
   role: MemberBusiness["role"];
   businesses: MemberBusiness[];
+  /** What the account menu calls them: their profile name, else null. */
+  profileName: string | null;
 };
 
 /**
@@ -31,12 +33,12 @@ export type DashboardContext = {
 export const getDashboardContext = cache(async (): Promise<DashboardContext> => {
   const user = await requireUser();
   const claims = rlsClaimsFor(user);
-  const businesses = await listMemberBusinesses(claims);
+  const { businesses, profileName } = await getDashboardMember(claims);
   if (businesses.length === 0) redirect("/onboarding");
 
   const wanted = (await cookies()).get(CURRENT_BUSINESS_COOKIE)?.value;
   const business = businesses.find((b) => b.id === wanted) ?? businesses[0]!;
-  return { user, claims, business, role: business.role, businesses };
+  return { user, claims, business, role: business.role, businesses, profileName };
 });
 
 /** Remember which business the dashboard shows (switcher, accepting an invite). */
