@@ -1,9 +1,18 @@
 import "server-only";
 
-import { and, eq } from "drizzle-orm";
+import { and, asc, eq, isNotNull } from "drizzle-orm";
+import { authUsers } from "drizzle-orm/supabase";
 
 import { adminQuery, type TenantScoped, tenantLookup } from "../../admin";
-import { bookings, businesses, customers, manageTokens, services, staff } from "../../schema";
+import {
+  bookings,
+  businesses,
+  customers,
+  manageTokens,
+  memberships,
+  services,
+  staff,
+} from "../../schema";
 import { liveToken } from "./bookings";
 
 /*
@@ -52,7 +61,7 @@ export const getManagedBooking = tenantLookup(
         staffName: staff.name,
         staffColor: staff.color,
         priceCents: bookings.priceCents,
-        customerName: customers.name,
+        customerName: bookings.customerName,
         customerNotes: bookings.customerNotes,
       })
       .from(manageTokens)
@@ -95,6 +104,23 @@ export const getBusinessContact = adminQuery(
       .select({ businessPhone: businesses.phone, businessEmail: businesses.contactEmail })
       .from(businesses)
       .where(eq(businesses.id, businessId));
-    return row ?? { businessPhone: null, businessEmail: null };
+    if (!row) return { businessPhone: null, businessEmail: null };
+    if (row.businessEmail) return row;
+    // No contact email set: the first owner's sign-in address, the same one
+    // booking emails reply to (booking/notify.ts).
+    const [owner] = await db
+      .select({ email: authUsers.email })
+      .from(memberships)
+      .innerJoin(authUsers, eq(authUsers.id, memberships.userId))
+      .where(
+        and(
+          eq(memberships.businessId, businessId),
+          eq(memberships.role, "owner"),
+          isNotNull(authUsers.email),
+        ),
+      )
+      .orderBy(asc(memberships.createdAt))
+      .limit(1);
+    return { businessPhone: row.businessPhone, businessEmail: owner?.email ?? null };
   },
 );

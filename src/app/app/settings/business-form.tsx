@@ -65,6 +65,9 @@ function initialValues(settings: BusinessSettingsRow): BusinessSettingsInput {
     currency: settings.currency,
     brandColor: settings.brandColor,
     logoUrl: settings.logoUrl,
+    contactEmail: settings.contactEmail ?? "",
+    phone: settings.phone ?? "",
+    address: settings.address ?? "",
     openingHours: openingWeek(settings.openingHours) ?? defaultWeek(),
     rules: {
       minNoticeMin: settings.minNoticeMin,
@@ -145,6 +148,13 @@ export function BusinessForm({
   const ids = {
     name: useId(),
     nameError: useId(),
+    contactEmail: useId(),
+    contactEmailError: useId(),
+    phone: useId(),
+    phoneError: useId(),
+    address: useId(),
+    addressHint: useId(),
+    addressError: useId(),
     slug: useId(),
     slugStatus: useId(),
     slugWarning: useId(),
@@ -199,7 +209,14 @@ export function BusinessForm({
       ].filter(Boolean);
       toast.success("Settings saved", { description: notes.join(" ") || undefined });
       setBeforeRounding(null);
-      reset({ ...values, roundStaffHours: false, confirmTimezone: false });
+      reset({
+        ...values,
+        contactEmail: values.contactEmail ?? "",
+        phone: values.phone ?? "",
+        address: values.address ?? "",
+        roundStaffHours: false,
+        confirmTimezone: false,
+      });
     });
   });
 
@@ -337,6 +354,63 @@ export function BusinessForm({
             }
           />
         )}
+      </Section>
+
+      <Section
+        title="Contact"
+        description="How customers reach you. Booking emails reply here, and the manage page shows these once online changes have closed."
+      >
+        <div className="grid gap-6 md:grid-cols-2">
+          <Field>
+            <Label htmlFor={ids.contactEmail} className="text-label">
+              Contact email <span className="font-normal text-muted-foreground">(optional)</span>
+            </Label>
+            <Input
+              id={ids.contactEmail}
+              type="email"
+              autoComplete="email"
+              aria-invalid={!!errors.contactEmail || undefined}
+              aria-describedby={errors.contactEmail ? ids.contactEmailError : undefined}
+              className="h-11 px-3 text-body md:text-body"
+              {...register("contactEmail")}
+            />
+            <FieldError id={ids.contactEmailError} message={errors.contactEmail?.message} />
+          </Field>
+          <Field>
+            <Label htmlFor={ids.phone} className="text-label">
+              Phone <span className="font-normal text-muted-foreground">(optional)</span>
+            </Label>
+            <Input
+              id={ids.phone}
+              type="tel"
+              autoComplete="tel"
+              aria-invalid={!!errors.phone || undefined}
+              aria-describedby={errors.phone ? ids.phoneError : undefined}
+              className="h-11 px-3 text-body md:text-body"
+              {...register("phone")}
+            />
+            <FieldError id={ids.phoneError} message={errors.phone?.message} />
+          </Field>
+        </div>
+        <Field>
+          <Label htmlFor={ids.address} className="text-label">
+            Address <span className="font-normal text-muted-foreground">(optional)</span>
+          </Label>
+          <Input
+            id={ids.address}
+            autoComplete="street-address"
+            aria-invalid={!!errors.address || undefined}
+            aria-describedby={
+              errors.address ? `${ids.addressHint} ${ids.addressError}` : ids.addressHint
+            }
+            className="h-11 px-3 text-body md:text-body"
+            {...register("address")}
+          />
+          <p id={ids.addressHint} className="text-body-sm text-muted-foreground">
+            Shown on your booking page and in emails.
+          </p>
+          <FieldError id={ids.addressError} message={errors.address?.message} />
+        </Field>
       </Section>
 
       <Section

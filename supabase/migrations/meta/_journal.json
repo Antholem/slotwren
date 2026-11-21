@@ -120,6 +120,13 @@
       "when": 1795218124334,
       "tag": "20261120234204_drop_booking_manage_token_hash",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1795236346884,
+      "tag": "20261121044546_booking_customer_snapshot",
+      "breakpoints": true
     }
   ]
 }

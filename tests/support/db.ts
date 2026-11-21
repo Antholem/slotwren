@@ -78,6 +78,7 @@ export function bookingValues(
     serviceId: service.id,
     staffId: fixture.staff.id,
     customerId: fixture.customer.id,
+    customerName: fixture.customer.name,
     startsAt,
     endsAt,
     bufferedStart: new Date(startsAt.getTime() - service.bufferBeforeMin * 60_000),

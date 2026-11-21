@@ -359,6 +359,11 @@ export const bookings = pgTable(
     status: bookingStatusEnum("status").notNull().default("confirmed"),
     source: bookingSourceEnum("source").notNull(),
     priceCents: integer("price_cents").notNull(), // snapshot at booking time
+    // What the customer typed when booking: shown on the manage page and in
+    // emails. The customers row is the business's record and never changes from
+    // the public page (someone typing a known email can't rename or re-phone it).
+    customerName: text("customer_name").notNull(),
+    customerPhone: text("customer_phone"),
     customerNotes: text("customer_notes"),
     customerTimezone: text("customer_timezone"),
     createdByUserId: uuid("created_by_user_id").references(() => authUsers.id, {

@@ -53,7 +53,9 @@ export function BookingCancelledEmail(props: BookingCancelledEmailProps) {
       <PrimaryButton href={props.bookAgainUrl} brandColor={business.brandColor}>
         Book another time
       </PrimaryButton>
-      <Body2>Questions? Reply to this email and {business.name} will get back to you.</Body2>
+      {props.canReply && (
+        <Body2>Questions? Reply to this email and {business.name} will get back to you.</Body2>
+      )}
     </EmailShell>
   );
 }

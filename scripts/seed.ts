@@ -260,6 +260,8 @@ async function main() {
             status: booking.status,
             source: booking.source,
             priceCents: booking.priceCents,
+            customerName: CUSTOMERS[booking.customerIndex]!.name,
+            customerPhone: CUSTOMERS[booking.customerIndex]!.phone ?? null,
             customerNotes: booking.customerNotes,
             customerTimezone: booking.customerTimezone,
             createdByUserId: booking.source === "manual" ? ownerId : null,

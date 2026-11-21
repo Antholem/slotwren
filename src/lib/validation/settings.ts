@@ -71,9 +71,36 @@ export const bookingRulesSchema = z
   });
 export type BookingRulesInput = z.input<typeof bookingRulesSchema>;
 
+/** Optional text: blank is null. */
+const optional = (schema: z.ZodString, check: (v: string) => boolean, message: string) =>
+  schema.refine((v) => v === "" || check(v), message).transform((v) => v || null);
+
+/**
+ * How customers reach the business: replies to booking emails, and the manage
+ * page once online changes have closed. All optional.
+ */
+export const contactFields = {
+  contactEmail: optional(
+    z.string().trim().max(254, "That email address is too long."),
+    (v) => z.email().safeParse(v).success,
+    "Enter a valid email address.",
+  ),
+  phone: optional(
+    z.string().trim().max(40, "That phone number is too long."),
+    (v) => /^\+?[\d\s().-]{5,39}$/.test(v) && v.replace(/\D/g, "").length >= 5,
+    "Enter a phone number, like +63 917 123 4567.",
+  ),
+  address: optional(
+    z.string().trim().max(200, "Keep the address under 200 characters."),
+    () => true,
+    "",
+  ),
+};
+
 export const businessSettingsSchema = z
   .object({
     name: basicsSchema.shape.name,
+    ...contactFields,
     slug: basicsSchema.shape.slug,
     timezone: basicsSchema.shape.timezone,
     currency: z.string().refine(isSupportedCurrency, "Pick a currency from the list."),

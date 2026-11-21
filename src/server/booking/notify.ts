@@ -37,7 +37,23 @@ const SOURCES = {
 
 const zoneOf = (s: BookingSummary) => s.customerTimezone ?? s.businessTimezone;
 
-function data(s: BookingSummary, zone = zoneOf(s)): BookingEmailData {
+/**
+ * Where a customer's reply goes: the business's contact email, else its
+ * owners' sign-in addresses. Null when there's nobody (the email then
+ * doesn't invite a reply).
+ */
+async function replyAddress(s: BookingSummary): Promise<string | string[] | null> {
+  if (s.businessContactEmail) return s.businessContactEmail;
+  try {
+    const owners = await getOwnerEmails({ businessId: s.businessId });
+    return owners.length > 0 ? owners : null;
+  } catch (error) {
+    console.error("[email] reply address lookup failed", error);
+    return null;
+  }
+}
+
+function data(s: BookingSummary, zone = zoneOf(s), canReply = false): BookingEmailData {
   return {
     business: {
       name: s.businessName,
@@ -57,6 +73,7 @@ function data(s: BookingSummary, zone = zoneOf(s)): BookingEmailData {
     mapsUrl: s.businessAddress
       ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(s.businessAddress)}`
       : null,
+    canReply,
   };
 }
 
@@ -116,6 +133,7 @@ export async function notifyBookingCreated(
 ): Promise<boolean> {
   const customer = safely("booking confirmation", async () => {
     const zone = zoneOf(s);
+    const replyTo = await replyAddress(s);
     const cal = calendar(s, now);
     const via =
       s.source === "ai"
@@ -127,10 +145,10 @@ export async function notifyBookingCreated(
       to: s.customerEmail,
       subject: `Booked: ${s.serviceName}, ${short(s)}`,
       fromName: s.businessName,
-      replyTo: s.businessContactEmail,
+      replyTo,
       attachments: [cal.attachment],
       react: BookingConfirmedEmail({
-        ...data(s),
+        ...data(s, zoneOf(s), replyTo !== null),
         manageUrl: manageUrl(manageToken),
         googleUrl: cal.googleUrl,
         icsUrl: cal.icsUrl,
@@ -182,23 +200,30 @@ export async function notifyBookingRescheduled(
   s: BookingSummary,
   {
     previousStart,
+    previousStaffId,
     manageToken,
     byCustomer,
-  }: { previousStart: Date; manageToken: string; byCustomer: boolean },
+  }: { previousStart: Date; previousStaffId: string; manageToken: string; byCustomer: boolean },
   now = new Date(),
 ): Promise<boolean> {
   return safely("reschedule email", async () => {
     // A fresh SEQUENCE per change, so calendars update the event they have.
     const cal = calendar(s, now, Math.floor(now.getTime() / 1000));
+    const replyTo = await replyAddress(s);
+    // Same time, someone else: say who, not "it was" the same time (L7).
+    const sameTime = previousStart.getTime() === s.startsAt.getTime();
+    const staffOnly = sameTime && previousStaffId !== s.staffId;
     const result = await sendEmail({
       to: s.customerEmail,
-      subject: `Moved: ${s.serviceName}, now ${short(s)}`,
+      subject: staffOnly
+        ? `Changed: ${s.serviceName}, ${short(s)}, now with ${s.staffName}`
+        : `Moved: ${s.serviceName}, now ${short(s)}`,
       fromName: s.businessName,
-      replyTo: s.businessContactEmail,
+      replyTo,
       attachments: [cal.attachment],
       react: BookingRescheduledEmail({
-        ...data(s),
-        previous: formatInZone(previousStart, zoneOf(s), "EEE d MMM, HH:mm"),
+        ...data(s, zoneOf(s), replyTo !== null),
+        previous: sameTime ? null : formatInZone(previousStart, zoneOf(s), "EEE d MMM, HH:mm"),
         manageUrl: manageUrl(manageToken),
         googleUrl: cal.googleUrl,
         icsUrl: cal.icsUrl,
@@ -217,13 +242,14 @@ export async function notifyBookingCancelled(
   { byBusiness, message }: { byBusiness: boolean; message: string | null },
 ): Promise<boolean> {
   return safely("cancellation email", async () => {
+    const replyTo = await replyAddress(s);
     const result = await sendEmail({
       to: s.customerEmail,
       subject: `Cancelled: ${s.serviceName}, ${short(s)}`,
       fromName: s.businessName,
-      replyTo: s.businessContactEmail,
+      replyTo,
       react: BookingCancelledEmail({
-        ...data(s),
+        ...data(s, zoneOf(s), replyTo !== null),
         byBusiness,
         message: byBusiness ? message : null,
         bookAgainUrl: absolute(`/b/${s.businessSlug}`),
@@ -243,13 +269,14 @@ export async function notifyBookingReminder(
   return safely("reminder email", async () => {
     const zone = zoneOf(s);
     const dayWord = relativeDay(s.startsAt, zone, now);
+    const replyTo = await replyAddress(s);
     const result = await sendEmail({
       to: s.customerEmail,
       subject: `${dayWord} at ${formatInZone(s.startsAt, zone, "HH:mm")}: ${s.serviceName} with ${s.staffName}`,
       fromName: s.businessName,
-      replyTo: s.businessContactEmail,
+      replyTo,
       react: BookingReminderEmail({
-        ...data(s),
+        ...data(s, zoneOf(s), replyTo !== null),
         dayWord,
         manageUrl: manageUrl(manageToken),
         policy: policy(s),

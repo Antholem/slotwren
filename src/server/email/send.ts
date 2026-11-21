@@ -52,7 +52,7 @@ export async function sendEmail({
   /** Shown as the sender: the business's name. */
   fromName?: string;
   /** Where replies go: the business, not Slotwren. */
-  replyTo?: string | null;
+  replyTo?: string | string[] | null;
   attachments?: EmailAttachment[];
 }): Promise<SendResult> {
   if (!env.RESEND_API_KEY) {
@@ -77,7 +77,7 @@ export async function sendEmail({
       to,
       subject,
       react,
-      ...(replyTo ? { replyTo } : {}),
+      ...(replyTo?.length ? { replyTo } : {}),
       ...(attachments?.length
         ? {
             attachments: attachments.map((a) => ({
