@@ -13,7 +13,8 @@ import { env } from "@/env";
 
 export const inngest = new Inngest({
   id: "slotwren",
-  isDev: env.INNGEST_DEV === "1",
+  // env.ts refuses INNGEST_DEV=1 on production; this holds even if validation is skipped.
+  isDev: env.INNGEST_DEV === "1" && env.VERCEL_ENV !== "production",
   eventKey: env.INNGEST_EVENT_KEY,
   signingKey: env.INNGEST_SIGNING_KEY,
 });

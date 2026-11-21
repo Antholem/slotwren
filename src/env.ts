@@ -64,6 +64,8 @@ const serverSchema = z
     INNGEST_SIGNING_KEY: featureKey(),
     // "1" locally: talk to the Inngest dev server (pnpm jobs:dev), no keys needed.
     INNGEST_DEV: z.enum(["0", "1"]).optional(),
+    // Set by Vercel on every deploy.
+    VERCEL_ENV: z.enum(["production", "preview", "development"]).optional(),
 
     // Rate limiting
     UPSTASH_REDIS_REST_URL: requireFeatureKeys ? z.url() : z.url().optional(),
@@ -74,6 +76,14 @@ const serverSchema = z
     SENTRY_AUTH_TOKEN: z.string().min(1).optional(),
   })
   .superRefine((env, ctx) => {
+    // Dev mode skips request signing: never on production, whatever leaked into its env.
+    if (env.INNGEST_DEV === "1" && env.VERCEL_ENV === "production") {
+      ctx.addIssue({
+        code: "custom",
+        path: ["INNGEST_DEV"],
+        message: "Must not be 1 in production (it turns off request signing)",
+      });
+    }
     const keyFor = {
       gemini: "GOOGLE_GENERATIVE_AI_API_KEY",
       anthropic: "ANTHROPIC_API_KEY",
