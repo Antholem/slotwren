@@ -35,6 +35,7 @@ pnpm dev                 # Next dev server (needs .env.local; see .env.example)
 pnpm db:start            # local Supabase (Docker), minus logflare/vector/edge-runtime/imgproxy/supavisor
 pnpm db:reset            # recreate local DB from supabase/migrations
 pnpm db:seed             # Lumen Studio demo data (idempotent: replaces the demo business)
+pnpm jobs:dev            # Inngest dev server on :8288 (needs INNGEST_DEV=1 and pnpm dev on :3000)
 
 pnpm check               # lint + typecheck + format:check + unit/component tests
 pnpm lint | typecheck | format | test
@@ -205,6 +206,10 @@ These are hard rules. If a task seems to need breaking one, stop and ask.
   use `data-[side=right]:sm:max-w-lg`, not `sm:max-w-lg`.
 - `text-muted-foreground` on `bg-muted` is 4.39:1, which fails AA. Put muted text on
   `bg-card`/`bg-background` (4.6:1+), or use a bordered badge instead of a muted fill.
+- Node 22.19 or later: jsdom 30 (component tests) pulls in undici 8, which needs it. On older
+  Node the components project fails to start its worker.
+- Public endpoints are rate-limited per IP (`src/server/rate-limit.ts`). Playwright tests
+  that book call `asNewVisitor(page)` (a fresh `x-forwarded-for`), or the suite trips the limit.
 - Next skips `.env.local` when `NODE_ENV=test`, so `vitest.config.mts` reads it directly.
 - Code under `src/server` imports `server-only`; scripts run with tsx can't import it, so
   `scripts/` builds its own Drizzle connection.

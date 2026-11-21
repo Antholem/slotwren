@@ -6,13 +6,15 @@ import { getPublicSlots } from "@/server/booking/public-slots";
 import { hashToken } from "@/server/booking/tokens";
 import { findBookingByManageToken } from "@/server/db/queries/public/bookings";
 import { getPublicBusinessBySlug } from "@/server/db/queries/public/business";
+import { clientIp, rateLimit } from "@/server/rate-limit";
 
 /*
  * GET /api/slots/<slug>?service=<id>&staff=<id|any>&from=<ISO>&to=<ISO>&tz=<IANA>[&manage=<token>]
  *
  * Open and taken times for the booking page's time step. The window is a
  * stretch of days in the customer's timezone (at most two weeks), which only
- * the browser knows. Public fields only; never cached. `manage` (a manage
+ * the browser knows. Public fields only; never cached; rate-limited per IP and
+ * per business (429 with a message to show). `manage` (a manage
  * link's token) leaves that booking out, so it can move into its own time.
  */
 
@@ -38,6 +40,20 @@ export async function GET(request: Request, { params }: RouteContext<"/api/slots
   const { slug } = await params;
   const business = SLUG_PATTERN.test(slug) ? await getPublicBusinessBySlug(slug) : null;
   if (!business) return json({ error: "Not found" }, 404);
+
+  const limited = await rateLimit("slots", {
+    ip: clientIp(request.headers),
+    businessId: business.id,
+  });
+  if (!limited.ok) {
+    return Response.json(
+      { error: "rate_limited", message: limited.message },
+      {
+        status: 429,
+        headers: { "Cache-Control": "no-store", "Retry-After": String(limited.retryAfterSec) },
+      },
+    );
+  }
 
   const parsed = query.safeParse(Object.fromEntries(new URL(request.url).searchParams));
   if (!parsed.success) return json({ error: "Bad request" }, 400);

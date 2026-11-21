@@ -3,9 +3,11 @@ import "server-only";
 import { env } from "@/env";
 import { BookingCancelledEmail } from "@/emails/booking-cancelled";
 import { BookingConfirmedEmail } from "@/emails/booking-confirmed";
+import { BookingReminderEmail } from "@/emails/booking-reminder";
 import { BookingRescheduledEmail } from "@/emails/booking-rescheduled";
 import type { BookingEmailData } from "@/emails/components/booking-details";
 import { OwnerNewBookingEmail } from "@/emails/owner-new-booking";
+import { relativeDay } from "@/lib/booking-page";
 import { buildIcs, type CalendarEvent, googleCalendarUrl } from "@/lib/calendar";
 import { formatInZone } from "@/lib/dates";
 import { formatPrice } from "@/lib/money";
@@ -227,6 +229,32 @@ export async function notifyBookingCancelled(
         bookAgainUrl: absolute(`/b/${s.businessSlug}`),
       }),
       logLines: [`Booking ${s.code} cancelled`],
+    });
+    return result.delivered;
+  });
+}
+
+/** The reminder (a job sends it; booking/reminders.ts decides whether). */
+export async function notifyBookingReminder(
+  s: BookingSummary,
+  manageToken: string,
+  now = new Date(),
+): Promise<boolean> {
+  return safely("reminder email", async () => {
+    const zone = zoneOf(s);
+    const dayWord = relativeDay(s.startsAt, zone, now);
+    const result = await sendEmail({
+      to: s.customerEmail,
+      subject: `${dayWord} at ${formatInZone(s.startsAt, zone, "HH:mm")}: ${s.serviceName} with ${s.staffName}`,
+      fromName: s.businessName,
+      replyTo: s.businessContactEmail,
+      react: BookingReminderEmail({
+        ...data(s),
+        dayWord,
+        manageUrl: manageUrl(manageToken),
+        policy: policy(s),
+      }),
+      logLines: [`Reminder for ${s.code}. Manage link: ${manageUrl(manageToken)}`],
     });
     return result.delivered;
   });

@@ -109,3 +109,15 @@ export async function bookThroughPage(page: Page, fixture: Fixture, chip = 1) {
   await expect(page).toHaveURL(new RegExp(`/b/${fixture.business.slug}/booked/`));
   return { start: start! };
 }
+
+/**
+ * Each test books as its own visitor: the public endpoints are rate-limited
+ * per IP (src/server/rate-limit.ts), and a whole suite from localhost would
+ * otherwise look like one person booking dozens of times.
+ */
+export async function asNewVisitor(page: Page) {
+  const octet = () => Math.floor(Math.random() * 254) + 1;
+  await page.setExtraHTTPHeaders({
+    "x-forwarded-for": `203.0.${octet()}.${octet()}`,
+  });
+}

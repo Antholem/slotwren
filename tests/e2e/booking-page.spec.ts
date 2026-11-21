@@ -4,6 +4,7 @@ import { and, eq } from "drizzle-orm";
 import * as schema from "@/server/db/schema";
 
 import {
+  asNewVisitor,
   bookableBusinesses,
   choose,
   pressContinue,
@@ -26,6 +27,7 @@ const bookableBusiness = () => businesses.create();
 
 // The customer is in the business's timezone unless a test says otherwise.
 test.use({ timezoneId: "Asia/Manila" });
+test.beforeEach(({ page }) => asNewVisitor(page));
 
 test("a customer books with the keyboard and sees the confirmation", async ({ page }) => {
   test.setTimeout(120_000);

@@ -1,5 +1,7 @@
 allowBuilds:
   esbuild: false
+  # Inngest dependency; its postinstall only prints a version-scheme warning.
+  protobufjs: false
   sharp: false
   supabase: true
   unrs-resolver: false
