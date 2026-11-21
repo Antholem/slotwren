@@ -8,6 +8,7 @@ import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { useCustomerTimeZone } from "@/hooks/use-customer-time-zone";
+import { useStepNavigation } from "@/hooks/use-step-navigation";
 import {
   type BookingState,
   bookingHref,
@@ -29,7 +30,13 @@ import { gmtOffset, timeZoneLabel } from "@/lib/timezones";
 import { cn } from "@/lib/utils";
 import { zoneClock } from "@/lib/zone-clock";
 
-import { BottomBar, StepLayout, StepProgress, SummaryCard } from "./booking-layout";
+import {
+  BottomBar,
+  type StepAction,
+  StepLayout,
+  StepProgress,
+  SummaryCard,
+} from "./booking-layout";
 import { FOCUS_RING } from "./choice-card";
 
 type Props = {
@@ -96,6 +103,7 @@ function TimeStepIn({
   showProgress,
 }: Props & { zone: string }) {
   const router = useRouter();
+  const navigation = useStepNavigation();
   const clock = zoneClock(zone);
   const nowMs = Date.parse(now);
   const today = clock.parts(nowMs).date;
@@ -153,9 +161,10 @@ function TimeStepIn({
   const action = {
     label: "Continue",
     disabled: !chosen,
+    pending: navigation.pending,
     onClick: () =>
       chosen &&
-      router.push(
+      navigation.push(
         hrefFor({
           ...state,
           step: "details",
@@ -305,7 +314,7 @@ function TimeStepFrame({
 }: Props & {
   chosen?: SlotChip | null;
   zone?: string;
-  action?: { label: string; disabled?: boolean; onClick?: () => void };
+  action?: StepAction;
   prompt?: string;
   header?: React.ReactNode;
   strip?: React.ReactNode;
