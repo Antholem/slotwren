@@ -35,6 +35,12 @@ export function BusinessSummary({
         <Row label="Currency">{currencyLabel(settings.currency)}</Row>
       </Section>
 
+      <Section title="Contact">
+        <Row label="Contact email">{settings.contactEmail ?? "Not set"}</Row>
+        <Row label="Phone">{settings.phone ?? "Not set"}</Row>
+        <Row label="Address">{settings.address ?? "Not set"}</Row>
+      </Section>
+
       <Section title="Brand">
         <Row label="Logo">
           {settings.logoUrl ? (

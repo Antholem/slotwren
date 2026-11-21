@@ -45,6 +45,15 @@ test("an owner changes the booking rules and the booking link", async ({ page })
   await expect(page.getByText("Old links will stop working")).toBeVisible();
   await expect(page.getByText(`/b/${oldSlug}`, { exact: false }).first()).toBeVisible();
 
+  // Contact details: checked, then saved.
+  await page.getByLabel("Contact email").fill("front desk");
+  await page.getByLabel("Phone").fill("+63 917 123 4567");
+  await page.getByLabel("Address").fill("12 Lumen Lane, Makati");
+  await page.getByRole("button", { name: "Save changes" }).click();
+  await expect(page.getByText("Enter a valid email address.")).toBeVisible();
+  await expect(page.getByLabel("Contact email")).toHaveAttribute("aria-invalid", "true");
+  await page.getByLabel("Contact email").fill("hello@lumen.example");
+
   await page.getByLabel("Minimum notice").selectOption({ label: "1 day" });
   await page.getByLabel("Book up to").fill("30");
   await choose(page, "Every 15 minutes");
@@ -69,6 +78,9 @@ test("an owner changes the booking rules and the booking link", async ({ page })
     maxDaysAhead: 30,
     slotIntervalMin: 15,
     cancellationWindowHours: 48,
+    contactEmail: "hello@lumen.example",
+    phone: "+63 917 123 4567",
+    address: "12 Lumen Lane, Makati",
   });
 
   // Saved, so nothing to warn about; and still there after a reload.
@@ -79,6 +91,7 @@ test("an owner changes the booking rules and the booking link", async ({ page })
   await expect(page.getByLabel("Book up to")).toHaveValue("30");
   await expect(page.getByRole("radio", { name: "Every 15 minutes" })).toBeChecked();
   await expect(page.getByLabel("Free cancellation")).toHaveValue("48");
+  await expect(page.getByLabel("Contact email")).toHaveValue("hello@lumen.example");
   expect(errors).toEqual([]);
 });
 
