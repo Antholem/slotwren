@@ -66,13 +66,14 @@ async function bookingPageGate(request: NextRequest, pathname: string) {
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
- * Manage links: a wrong or retired token (a customer's reschedule rotates it)
+ * Manage links: a wrong, revoked or expired token (see manage_tokens)
  * gets the branded 404 before the page streams. Looked up by hash only.
  */
 async function manageLinkGate(request: NextRequest, pathname: string) {
   const token = pathname.split("/")[2] ?? "";
   const found =
-    MANAGE_TOKEN.test(token) && (await findBookingByManageToken({ tokenHash: hashToken(token) }));
+    MANAGE_TOKEN.test(token) &&
+    (await findBookingByManageToken({ tokenHash: hashToken(token), now: new Date() }));
   if (found) return NextResponse.next();
   return NextResponse.rewrite(new URL("/_manage-link-not-found", request.url));
 }

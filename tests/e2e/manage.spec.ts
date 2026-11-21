@@ -1,4 +1,4 @@
-import { createHash, randomBytes } from "node:crypto";
+import { randomBytes } from "node:crypto";
 
 import { expect, type Page, test } from "@playwright/test";
 import { eq } from "drizzle-orm";
@@ -13,7 +13,7 @@ import {
   pressContinue,
   timeChips,
 } from "../support/booking-flow";
-import { bookingValues } from "../support/db";
+import { bookingValues, issueManageToken } from "../support/db";
 import { collectConsoleErrors, expectNoAxeViolations } from "../support/e2e";
 
 /*
@@ -32,15 +32,11 @@ const bookingRow = async (id: string) =>
 
 /** A booking straight in the database with a known manage token. */
 async function bookingWithToken(fixture: Fixture, startsAt: Date) {
-  const token = randomBytes(32).toString("base64url");
   const [row] = await db
     .insert(schema.bookings)
-    .values(
-      bookingValues(fixture, startsAt, {
-        manageTokenHash: createHash("sha256").update(token).digest("hex"),
-      }),
-    )
-    .returning({ id: schema.bookings.id });
+    .values(bookingValues(fixture, startsAt))
+    .returning();
+  const token = await issueManageToken(db, row!);
   return { token, id: row!.id };
 }
 
@@ -51,10 +47,11 @@ test("book, open the manage link, reschedule, then cancel", async ({ page }) => 
   test.setTimeout(150_000);
   const errors = collectConsoleErrors(page);
   const fixture = await businesses.create();
-  // A one-hour window, so tomorrow's first times can still be changed online.
+  // Bookable a day ahead at the earliest, changeable online until an hour before:
+  // whatever the time now, the booking is well inside its free-change window.
   await db
     .update(schema.businesses)
-    .set({ cancellationWindowHours: 1 })
+    .set({ cancellationWindowHours: 1, minNoticeMin: 24 * 60 })
     .where(eq(schema.businesses.id, fixture.business.id));
   const { start } = await bookThroughPage(page, fixture);
   const bookingId = page.url().split("/booked/")[1]!;
@@ -95,6 +92,7 @@ test("book, open the manage link, reschedule, then cancel", async ({ page }) => 
   await page.getByRole("button", { name: "Confirm new time" }).click();
 
   await expect(page).toHaveURL(/\/m\/[A-Za-z0-9_-]{43}\?done=moved$/);
+  const movedTo = new URL(page.url()).pathname;
   await expect(page.getByRole("status")).toContainText("your booking has moved");
   expect(new URL(page.url()).pathname).not.toBe(firstLink);
   expect((await bookingRow(bookingId)).startsAt).toEqual(new Date(target));
@@ -112,11 +110,17 @@ test("book, open the manage link, reschedule, then cancel", async ({ page }) => 
   await expectNoAxeViolations(page);
   await dialog.getByRole("button", { name: "Cancel booking" }).click();
 
-  await expect(page).toHaveURL(/done=cancelled$/);
-  await expect(page.getByRole("status")).toContainText("Your booking is cancelled");
-  await expect(page.getByRole("region", { name: "Your booking" })).toContainText("Cancelled");
-  await expect(page.getByRole("link", { name: "Book again" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "Reschedule" })).toHaveCount(0);
+  // Cancelling revokes every manage link, so the customer lands on the
+  // booking's confirmation page, now showing it cancelled.
+  await expect(page).toHaveURL(
+    new RegExp(`/b/${fixture.business.slug}/booked/${bookingId}\\?cancelled=1$`),
+  );
+  await expect(page.getByRole("status")).toContainText("You’ve cancelled your booking");
+  await expect(page.getByRole("heading", { level: 1, name: "Booking cancelled" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Book another time" })).toBeVisible();
+  const movedLink = await page.context().newPage();
+  expect((await movedLink.goto(movedTo))?.status()).toBe(404);
+  await movedLink.close();
   expect(await bookingRow(bookingId)).toMatchObject({
     status: "cancelled",
     cancelledBy: "customer",

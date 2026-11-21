@@ -46,8 +46,9 @@ for display); anything the slot engine or billing reads is a real column.
 **Bookings.** `bookings` store `starts_at`/`ends_at` plus `buffered_start`/`buffered_end`
 (the time the staff member is actually blocked), a status (`pending`, `confirmed`,
 `cancelled`, `completed`, `no_show`), the source (page, widget, AI, manual), a price
-snapshot, a code shown to customers (`SW-8K3D-27`, unique per business) and a hashed
-manage-link token. Double booking is impossible in the database:
+snapshot and a code shown to customers (`SW-8K3D-27`, unique per business). Manage links
+live in `manage_tokens` (several per booking, hashed, expiring when the appointment ends;
+ADR 0002). Double booking is impossible in the database:
 
 ```sql
 exclude using gist (

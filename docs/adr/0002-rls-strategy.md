@@ -19,21 +19,22 @@ links, AI chat, webhooks, jobs) use `adminDb`.
 
 **Policies by role**, for the `authenticated` role only (no `anon` policies at all):
 
-| Table                                 | Members (owner or staff)          | Owners only                  | Staff extra                |
-| ------------------------------------- | --------------------------------- | ---------------------------- | -------------------------- |
-| businesses                            | read                              | update settings, delete      |                            |
-| memberships                           | read team                         | change role, remove          |                            |
-| profiles                              | read self + teammates, update own |                              |                            |
-| staff, services, staff_services, faqs | read                              | write                        |                            |
-| staff_invites                         |                                   | all (token hashes stay here) |                            |
-| availability_rules, time_off          | read                              | write anyone's               | write own                  |
-| customers                             | read, insert, update              | delete                       |                            |
-| bookings                              | read                              | insert, update any           | insert, update own         |
-| booking_events                        | read, insert                      |                              | (append-only for everyone) |
-| ai_conversations, ai_messages         | read                              |                              |                            |
-| handoff_requests                      | read, update                      |                              |                            |
-| subscriptions                         |                                   | read                         |                            |
-| stripe_events                         | no access                         | no access                    |                            |
+| Table                                 | Members (owner or staff)          | Owners only                   | Staff extra                |
+| ------------------------------------- | --------------------------------- | ----------------------------- | -------------------------- |
+| businesses                            | read                              | update settings, delete       |                            |
+| memberships                           | read team                         | change role, remove           |                            |
+| profiles                              | read self + teammates, update own |                               |                            |
+| staff, services, staff_services, faqs | read                              | write                         |                            |
+| staff_invites                         |                                   | all (token hashes stay here)  |                            |
+| availability_rules, time_off          | read                              | write anyone's                | write own                  |
+| customers                             | read, insert, update              | delete                        |                            |
+| bookings                              | read                              | insert, update any            | insert, update own         |
+| booking_events                        | read, insert                      |                               | (append-only for everyone) |
+| ai_conversations, ai_messages         | read                              |                               |                            |
+| handoff_requests                      | read, update                      |                               |                            |
+| subscriptions                         |                                   | read                          |                            |
+| stripe_events                         | no access                         | no access                     |                            |
+| manage_tokens                         | no access (mint via function)     | no access (mint via function) |                            |
 
 Anyone signed in can create a business. A trigger makes them its owner.
 
@@ -55,7 +56,7 @@ Postgres evaluates once per query, and the definer rights avoid recursing into t
 - Tables written only by the server (AI, subscriptions, `stripe_events`) have their write
   grants revoked.
 - `bookings` UPDATE is limited by column grants: nobody signed in changes a booking's
-  business, code, source, manage-token hash, creator or AI conversation. Column grants
+  business, code, source, creator or AI conversation. Column grants
   can't tell owners from staff, so a trigger (`bookings_guard_price`, SQLSTATE 42501)
   lets only owners change `price_cents` (migration `20261110130331_booking_guards.sql`).
 - `businesses.ai_enabled` is an owner **preference**, granted like the other settings. It
@@ -76,6 +77,30 @@ booking_events to bookings; ai_messages and handoff_requests to conversations;
 ai_conversations and handoff_requests to customers. Optional links use
 `ON DELETE SET NULL (column)` so only the link is cleared, never `business_id`
 (migration `20261110124827_tenant_links.sql`).
+
+**Manage links (`manage_tokens`).** A booking has several live links: one per email that
+carried one (confirmation, reschedule, reminder). Each row is a SHA-256 hash, never the
+token, and expires when the appointment ends. The table is server-only: RLS on, no
+policies, no privileges for `anon` or `authenticated` (like `stripe_events`), so a member
+can't read a hash or forge a link.
+
+- Tokens are issued only through `private.mint_manage_token(booking, hash, purpose)`
+  (`SECURITY DEFINER`, executable by `authenticated`; migration
+  `20261120234128_manage_tokens_access.sql`). It refuses bookings that aren't pending or confirmed and
+  anything that isn't a hex SHA-256 digest. A signed-in caller may mint only for a booking
+  they may change (owners: any in their business; staff: their own, as RLS on `bookings`),
+  so a dashboard reschedule can email a fresh link. Server paths (booking page, manage page,
+  jobs) mint as `adminDb`.
+- `bookings_sync_manage_tokens` (an `AFTER UPDATE` trigger, `SECURITY DEFINER`) keeps
+  links in step: a moved booking moves its live links' expiry, and a cancelled one revokes
+  them all, whoever cancels.
+- A customer's own reschedule revokes every link they had and issues one new one (the
+  email carries it); when the business moves a booking, earlier links keep working and
+  the email carries a fresh one too.
+- Lookups take `now` and accept only live tokens (not revoked, not expired). The proxy
+  gives anything else the branded 404. Existing single tokens moved into the table with
+  their booking's end as expiry (migration `20261120234109_manage_tokens.sql` and the two
+  after it).
 
 **Invariants in triggers.** A business always keeps one owner (`memberships_keep_an_owner`,
 SQLSTATE 23514). This only applies to signed-in users, so cascading deletes of a business

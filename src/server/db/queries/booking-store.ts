@@ -2,7 +2,7 @@ import "server-only";
 
 import { randomUUID } from "node:crypto";
 
-import { and, eq, gt, inArray, lt, ne, sql } from "drizzle-orm";
+import { and, eq, gt, inArray, isNull, lt, ne, sql } from "drizzle-orm";
 
 import type { BookingStatus, SlotBusiness, SlotService, SlotStaff } from "@/server/booking/slots";
 
@@ -13,6 +13,7 @@ import {
   bookings,
   businesses,
   customers,
+  manageTokens,
   services,
   staff,
   staffServices,
@@ -94,7 +95,6 @@ export type BookingInsert = {
   source: "page" | "widget" | "ai" | "manual";
   priceCents: number;
   code: string;
-  manageTokenHash: string;
   customerNotes: string | null;
   customerTimezone: string | null;
   createdByUserId: string | null;
@@ -298,8 +298,6 @@ export function bookingStore(tx: Transaction, businessId: string) {
         endsAt: Date;
         bufferedStart: Date;
         bufferedEnd: Date;
-        /** A new manage-link hash (a customer's change rotates the link). */
-        manageTokenHash?: string;
       },
     ): Promise<boolean> {
       const rows = await tx
@@ -308,6 +306,39 @@ export function bookingStore(tx: Transaction, businessId: string) {
         .where(and(eq(bookings.id, bookingId), eq(bookings.businessId, businessId)))
         .returning({ id: bookings.id });
       return rows.length > 0;
+    },
+
+    /**
+     * Issue a manage link: store the token's hash through
+     * private.mint_manage_token(), which checks a signed-in member may change
+     * this booking and sets the expiry to the appointment's end.
+     */
+    async mintManageToken(
+      bookingId: string,
+      tokenHash: string,
+      purpose: "created" | "rescheduled" | "reminder",
+    ) {
+      await tx.execute(
+        sql`select private.mint_manage_token(${bookingId}, ${tokenHash}, ${purpose}::public.manage_token_purpose)`,
+      );
+    },
+
+    /**
+     * Retire every live manage link for a booking (a customer moved it: the
+     * new email carries the only link). Server paths only: members can't
+     * write manage_tokens, so under RLS this changes nothing.
+     */
+    async revokeManageTokens(bookingId: string, at: Date) {
+      await tx
+        .update(manageTokens)
+        .set({ revokedAt: at })
+        .where(
+          and(
+            eq(manageTokens.bookingId, bookingId),
+            eq(manageTokens.businessId, businessId),
+            isNull(manageTokens.revokedAt),
+          ),
+        );
     },
 
     async cancelBooking(

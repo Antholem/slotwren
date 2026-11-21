@@ -1,5 +1,5 @@
 import { CircleCheck, Info, Mail, MapPin, Phone } from "lucide-react";
-import type { Metadata } from "next";
+import type { Metadata, Route } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { connection } from "next/server";
@@ -31,7 +31,8 @@ const TOKEN = /^[A-Za-z0-9_-]{43}$/;
 
 async function load(token: string) {
   if (!TOKEN.test(token)) return null;
-  const booking = await getManagedBooking({ tokenHash: hashToken(token) });
+  await connection(); // links expire: the lookup depends on now
+  const booking = await getManagedBooking({ tokenHash: hashToken(token), now: new Date() });
   if (!booking) return null;
   const [data, contact] = await Promise.all([
     getBookingPage(booking.businessId),
@@ -133,15 +134,13 @@ async function Manage({ params, searchParams }: PageProps<"/m/[token]">) {
           </p>
         </div>
 
-        {state.done && (
+        {state.done === "moved" && (
           <p
             role="status"
             className="flex items-center gap-3 rounded-xl border border-success bg-card p-4 text-body"
           >
             <CircleCheck aria-hidden className="size-5 shrink-0 text-success-text" />
-            {state.done === "moved"
-              ? "Done: your booking has moved. We've emailed you the details and a new link."
-              : "Your booking is cancelled. We've emailed you a receipt."}
+            Done: your booking has moved. We&rsquo;ve emailed you the details and a new link.
           </p>
         )}
 
@@ -207,7 +206,12 @@ async function Manage({ params, searchParams }: PageProps<"/m/[token]">) {
                 booking.
               </span>
             </p>
-            <ManageActions token={token} cancel={cancelAction} businessName={business.name} />
+            <ManageActions
+              token={token}
+              cancel={cancelAction}
+              businessName={business.name}
+              confirmationHref={`/b/${business.slug}/booked/${booking.id}?cancelled=1` as Route}
+            />
           </>
         ) : upcoming ? (
           <ContactPanel

@@ -42,7 +42,9 @@ export async function GET(request: Request, { params }: RouteContext<"/api/slots
   const parsed = query.safeParse(Object.fromEntries(new URL(request.url).searchParams));
   if (!parsed.success) return json({ error: "Bad request" }, 400);
   const { service, staff, from, to, tz, manage } = parsed.data;
-  const moving = manage ? await findBookingByManageToken({ tokenHash: hashToken(manage) }) : null;
+  const moving = manage
+    ? await findBookingByManageToken({ tokenHash: hashToken(manage), now: new Date() })
+    : null;
   if (manage && moving?.businessId !== business.id) return json({ error: "Not found" }, 404);
 
   const slots = await getPublicSlots({

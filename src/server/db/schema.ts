@@ -57,6 +57,12 @@ export const bookingStatusEnum = pgEnum("booking_status", [
 ]);
 export const bookingSourceEnum = pgEnum("booking_source", ["page", "widget", "ai", "manual"]);
 export const actorEnum = pgEnum("actor", ["customer", "staff", "ai", "system"]);
+// Why a manage link was issued (the email it went out in).
+export const manageTokenPurposeEnum = pgEnum("manage_token_purpose", [
+  "created",
+  "rescheduled",
+  "reminder",
+]);
 export const bookingEventTypeEnum = pgEnum("booking_event_type", [
   "created",
   "rescheduled",
@@ -355,7 +361,6 @@ export const bookings = pgTable(
     priceCents: integer("price_cents").notNull(), // snapshot at booking time
     customerNotes: text("customer_notes"),
     customerTimezone: text("customer_timezone"),
-    manageTokenHash: text("manage_token_hash").notNull().unique(),
     createdByUserId: uuid("created_by_user_id").references(() => authUsers.id, {
       onDelete: "set null",
     }),
@@ -396,6 +401,32 @@ export const bookings = pgTable(
 );
 
 // Audit trail: drawer timeline, AI transcript rows, "who cancelled this?"
+// Manage links (/m/[token]): several valid tokens per booking, one per email
+// that carried one. Stored SHA-256 hashed; each expires when the appointment
+// ends (kept in step by a trigger) and all are revoked when it's cancelled.
+// Server-only: RLS on with no policies, so members never see the hashes;
+// issue tokens through private.mint_manage_token() (ADR 0002).
+export const manageTokens = pgTable(
+  "manage_tokens",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    businessId: businessId(),
+    bookingId: uuid("booking_id").notNull(),
+    tokenHash: text("token_hash").notNull().unique(),
+    purpose: manageTokenPurposeEnum("purpose").notNull(),
+    expiresAt: tstz("expires_at").notNull(),
+    revokedAt: tstz("revoked_at"),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index().on(t.bookingId),
+    foreignKey({
+      columns: [t.bookingId, t.businessId],
+      foreignColumns: [bookings.id, bookings.businessId],
+    }).onDelete("cascade"),
+  ],
+);
+
 export const bookingEvents = pgTable(
   "booking_events",
   {

@@ -175,14 +175,14 @@ export async function notifyBookingCreated(
   return sent;
 }
 
-/** After rescheduleBooking: the new time, and a fresh manage link when there is one. */
+/** After rescheduleBooking: the new time and a fresh manage link. */
 export async function notifyBookingRescheduled(
   s: BookingSummary,
   {
     previousStart,
     manageToken,
     byCustomer,
-  }: { previousStart: Date; manageToken: string | null; byCustomer: boolean },
+  }: { previousStart: Date; manageToken: string; byCustomer: boolean },
   now = new Date(),
 ): Promise<boolean> {
   return safely("reschedule email", async () => {
@@ -197,15 +197,13 @@ export async function notifyBookingRescheduled(
       react: BookingRescheduledEmail({
         ...data(s),
         previous: formatInZone(previousStart, zoneOf(s), "EEE d MMM, HH:mm"),
-        manageUrl: manageToken ? manageUrl(manageToken) : null,
+        manageUrl: manageUrl(manageToken),
         googleUrl: cal.googleUrl,
         icsUrl: cal.icsUrl,
         policy: policy(s),
         movedByBusiness: !byCustomer,
       }),
-      logLines: [
-        `Booking ${s.code} moved.${manageToken ? ` Manage link: ${manageUrl(manageToken)}` : ""}`,
-      ],
+      logLines: [`Booking ${s.code} moved. Manage link: ${manageUrl(manageToken)}`],
     });
     return result.delivered;
   });

@@ -122,14 +122,20 @@ describe("public data", () => {
   it("a manage link resolves to its business and booking IDs only", async () => {
     const [booking] = await db
       .insert(schema.bookings)
-      .values(
-        bookingValues(fixture, new Date("2026-11-03T02:00:00Z"), { manageTokenHash: tokenHash }),
-      )
-      .returning({ id: schema.bookings.id });
-    const found = await findBookingByManageToken({ tokenHash });
+      .values(bookingValues(fixture, new Date("2026-11-03T02:00:00Z")))
+      .returning();
+    await db.insert(schema.manageTokens).values({
+      businessId: fixture.business.id,
+      bookingId: booking!.id,
+      tokenHash,
+      purpose: "created",
+      expiresAt: booking!.endsAt,
+    });
+    const now = new Date("2026-11-01T00:00:00Z");
+    const found = await findBookingByManageToken({ tokenHash, now });
     expect(found).toEqual({ businessId: fixture.business.id, bookingId: booking!.id });
     expectNothingPrivate(found);
-    expect(await findBookingByManageToken({ tokenHash: "0".repeat(64) })).toBeNull();
+    expect(await findBookingByManageToken({ tokenHash: "0".repeat(64), now })).toBeNull();
   });
 
   it("the invite's recipient is found only for a live, pending invite", async () => {
@@ -341,6 +347,7 @@ describe("public data", () => {
   });
 
   describe("the manage page", () => {
+    const EARLIER = new Date("2026-11-01T00:00:00Z");
     const manageToken = "manage-page-public-data-token-0123456789abcdef";
     const manageHash = createHash("sha256").update(manageToken).digest("hex");
     let bookingId: string;
@@ -354,16 +361,22 @@ describe("public data", () => {
         .insert(schema.bookings)
         .values(
           bookingValues(fixture, new Date("2026-11-05T02:00:00Z"), {
-            manageTokenHash: manageHash,
             customerNotes: "Allergic to lavender",
           }),
         )
-        .returning({ id: schema.bookings.id });
+        .returning();
       bookingId = row!.id;
+      await db.insert(schema.manageTokens).values({
+        businessId: fixture.business.id,
+        bookingId,
+        tokenHash: manageHash,
+        purpose: "created",
+        expiresAt: row!.endsAt,
+      });
     });
 
     it("shows the token holder their booking: their name and notes, nothing private", async () => {
-      const managed = await getManagedBooking({ tokenHash: manageHash });
+      const managed = await getManagedBooking({ tokenHash: manageHash, now: EARLIER });
       expect(managed).toMatchObject({
         businessId: fixture.business.id,
         id: bookingId,
@@ -380,7 +393,7 @@ describe("public data", () => {
       for (const secret of [manageHash, fixture.customer.email, "PRIVATE NOTE"]) {
         expect(json).not.toContain(secret);
       }
-      expect(await getManagedBooking({ tokenHash: "0".repeat(64) })).toBeNull();
+      expect(await getManagedBooking({ tokenHash: "0".repeat(64), now: EARLIER })).toBeNull();
     });
 
     // The one public query with the business's phone and email: what a

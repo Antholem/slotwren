@@ -234,8 +234,21 @@ describe("booking service", () => {
         customerTimezone: "Europe/London",
         createdByUserId: null,
       });
-      expect(saved.manageTokenHash).toBe(hashToken(created.manageToken));
-      expect(saved.manageTokenHash).not.toContain(created.manageToken);
+      // One manage link, stored hashed, expiring when the appointment ends.
+      const links = await db
+        .select()
+        .from(schema.manageTokens)
+        .where(eq(schema.manageTokens.bookingId, created.id));
+      expect(links).toEqual([
+        expect.objectContaining({
+          businessId: a.business.id,
+          tokenHash: hashToken(created.manageToken),
+          purpose: "created",
+          expiresAt: at("10:45"),
+          revokedAt: null,
+        }),
+      ]);
+      expect(JSON.stringify(links)).not.toContain(created.manageToken);
 
       expect(await events(created.id)).toEqual([
         expect.objectContaining({
@@ -551,7 +564,7 @@ describe("booking service", () => {
           startsAt: at("14:00"),
           endsAt: at("14:45"),
           staffId: a.staff.id,
-          manageToken: null, // only a customer's change rotates the link
+          manageToken: expect.any(String), // a fresh link for the reschedule email
         },
       });
       expect(await row(created.id)).toMatchObject({
@@ -646,7 +659,8 @@ describe("booking service", () => {
           now: NOW,
         },
       );
-      expect(afterCancel.ok || afterCancel.error.code).toBe("not_active");
+      // Cancelling revoked the link itself.
+      expect(afterCancel.ok || afterCancel.error.code).toBe("not_found");
     });
   });
 

@@ -35,16 +35,21 @@ export async function generateMetadata({
   };
 }
 
-export default function BookedPage({ params }: PageProps<"/b/[slug]/booked/[bookingId]">) {
+export default function BookedPage({
+  params,
+  searchParams,
+}: PageProps<"/b/[slug]/booked/[bookingId]">) {
   return (
     <Suspense fallback={<BookedSkeleton />}>
-      <Booked params={params} />
+      <Booked params={params} searchParams={searchParams} />
     </Suspense>
   );
 }
 
-async function Booked({ params }: Pick<PageProps<"/b/[slug]/booked/[bookingId]">, "params">) {
+async function Booked({ params, searchParams }: PageProps<"/b/[slug]/booked/[bookingId]">) {
   const { slug, bookingId } = await params;
+  // Arriving from the manage page right after cancelling there.
+  const justCancelled = (await searchParams).cancelled === "1";
   const confirmation = await loadConfirmation(slug, bookingId);
   if (!confirmation) notFound();
   const { data, booking, event } = confirmation;
@@ -100,6 +105,17 @@ async function Booked({ params }: Pick<PageProps<"/b/[slug]/booked/[bookingId]">
               : "We've emailed your confirmation. Reschedule or cancel any time from Manage booking."}
           </p>
         </div>
+
+        {cancelled && justCancelled && (
+          <p
+            role="status"
+            className="flex items-center gap-3 rounded-xl border border-success bg-card p-4 text-body"
+          >
+            <Check aria-hidden className="size-5 shrink-0 text-success-text" />
+            You&rsquo;ve cancelled your booking. We&rsquo;ve emailed you a receipt, and{" "}
+            {business.name} has been told.
+          </p>
+        )}
 
         <section aria-label="Booking details" className="rounded-2xl border bg-card p-6 shadow-xs">
           <div className="flex items-start justify-between gap-4 border-b pb-5">

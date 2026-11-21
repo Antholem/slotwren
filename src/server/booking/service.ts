@@ -117,8 +117,11 @@ export type MovedBooking = {
   startsAt: Date;
   endsAt: Date;
   staffId: string;
-  /** The new manage-link token after a customer's change (the old link stops working). */
-  manageToken: string | null;
+  /**
+   * A fresh manage link for the reschedule email. After a customer's own change
+   * it's their only live link; after the business's, earlier ones still work.
+   */
+  manageToken: string;
 };
 
 export type CancelledBooking = {
@@ -245,12 +248,13 @@ export async function createBooking(
       source,
       priceCents: context.service.priceCents,
       code,
-      manageTokenHash: hashToken(manageToken),
       customerNotes: values.notes,
       customerTimezone: values.customerTimezone,
       createdByUserId: channel.kind === "member" ? channel.actor.claims.sub : null,
       aiConversationId: channel.kind === "public" ? (channel.aiConversationId ?? null) : null,
     });
+    // The confirmation email's manage link; only its hash is stored.
+    await store.mintManageToken(id, hashToken(manageToken), "created");
     await store.addEvent({
       bookingId: id,
       type: "created",
@@ -301,7 +305,7 @@ type Opened = {
 };
 
 /** The store and booking a change applies to, or why there isn't one. */
-async function open(access: BookingAccess): Promise<Opened | null> {
+async function open(access: BookingAccess, now: Date): Promise<Opened | null> {
   if (access.kind === "member") {
     if (!z.uuid().safeParse(access.bookingId).success) return null;
     const { claims, businessId } = access.actor;
@@ -312,7 +316,10 @@ async function open(access: BookingAccess): Promise<Opened | null> {
     };
   }
   if (typeof access.manageToken !== "string" || access.manageToken.length < 20) return null;
-  const found = await findBookingByManageToken({ tokenHash: hashToken(access.manageToken) });
+  const found = await findBookingByManageToken({
+    tokenHash: hashToken(access.manageToken),
+    now,
+  });
   if (!found) return null;
   return {
     bookingId: found.bookingId,
@@ -354,7 +361,7 @@ export async function rescheduleBooking(
 ): Promise<Result<MovedBooking, BookingError>> {
   const parsed = rescheduleSchema.safeParse(input);
   if (!parsed.success) return invalid(parsed.error);
-  const opened = await open(access);
+  const opened = await open(access, now);
   if (!opened) return err("not_found", BOOKING_MESSAGES.bookingGone);
 
   try {
@@ -375,17 +382,18 @@ export async function rescheduleBooking(
       });
       if (!slot) throw new Rollback(err("slot_unavailable", BOOKING_MESSAGES.unavailable));
 
-      // A customer's change retires their manage link: the email carries the
-      // new one. (Members can't rotate it: the column isn't granted to them.)
-      const manageToken = opened.byCustomer ? generateToken() : null;
+      const manageToken = generateToken();
       const updated = await store.moveBooking(booking.id, {
         staffId: slot.staffId,
         startsAt: slot.start,
         endsAt: slot.end,
         ...buffered(context, slot),
-        ...(manageToken ? { manageTokenHash: hashToken(manageToken) } : {}),
       });
       if (!updated) throw new Rollback(err("forbidden", BOOKING_MESSAGES.forbidden));
+      // A customer's own change retires every link they had: the email carries
+      // the only one. When the business moves it, earlier links keep working.
+      if (opened.byCustomer) await store.revokeManageTokens(booking.id, now);
+      await store.mintManageToken(booking.id, hashToken(manageToken), "rescheduled");
       await store.addEvent({
         bookingId: booking.id,
         type: "rescheduled",
@@ -443,7 +451,7 @@ export async function cancelBooking(
 ): Promise<Result<CancelledBooking, BookingError>> {
   const parsed = cancelSchema.safeParse(input ?? {});
   if (!parsed.success) return invalid(parsed.error);
-  const opened = await open(access);
+  const opened = await open(access, now);
   if (!opened) return err("not_found", BOOKING_MESSAGES.bookingGone);
 
   let summary: BookingSummary | null;

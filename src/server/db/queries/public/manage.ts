@@ -3,7 +3,8 @@ import "server-only";
 import { and, eq } from "drizzle-orm";
 
 import { adminQuery, type TenantScoped, tenantLookup } from "../../admin";
-import { bookings, businesses, customers, services, staff } from "../../schema";
+import { bookings, businesses, customers, manageTokens, services, staff } from "../../schema";
+import { liveToken } from "./bookings";
 
 /*
  * The manage page (/m/[token]). Whoever holds the token is the customer, so
@@ -29,10 +30,13 @@ export type ManagedBooking = {
   customerNotes: string | null;
 };
 
-/** The booking a manage link points at, by the SHA-256 of its token. */
+/** The booking a live manage link points at, by the SHA-256 of its token. */
 export const getManagedBooking = tenantLookup(
   "byManageTokenHash",
-  async (db, { tokenHash }: { tokenHash: string }): Promise<ManagedBooking | null> => {
+  async (
+    db,
+    { tokenHash, now }: { tokenHash: string; now: Date },
+  ): Promise<ManagedBooking | null> => {
     const [row] = await db
       .select({
         businessId: bookings.businessId,
@@ -51,7 +55,14 @@ export const getManagedBooking = tenantLookup(
         customerName: customers.name,
         customerNotes: bookings.customerNotes,
       })
-      .from(bookings)
+      .from(manageTokens)
+      .innerJoin(
+        bookings,
+        and(
+          eq(bookings.id, manageTokens.bookingId),
+          eq(bookings.businessId, manageTokens.businessId),
+        ),
+      )
       .innerJoin(
         services,
         and(eq(services.id, bookings.serviceId), eq(services.businessId, bookings.businessId)),
@@ -64,7 +75,7 @@ export const getManagedBooking = tenantLookup(
         customers,
         and(eq(customers.id, bookings.customerId), eq(customers.businessId, bookings.businessId)),
       )
-      .where(eq(bookings.manageTokenHash, tokenHash))
+      .where(liveToken(tokenHash, now))
       .limit(1);
     return row ?? null;
   },

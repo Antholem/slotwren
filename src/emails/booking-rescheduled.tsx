@@ -17,8 +17,8 @@ import {
 export type BookingRescheduledEmailProps = BookingEmailData & {
   /** "Tue 27 Oct, 14:30" */
   previous: string;
-  /** A fresh manage link, or null when the business moved it (use the earlier one). */
-  manageUrl: string | null;
+  /** A fresh manage link (every reschedule email carries one). */
+  manageUrl: string;
   googleUrl: string;
   icsUrl: string;
   policy: string;
@@ -48,18 +48,14 @@ export function BookingRescheduledEmail(props: BookingRescheduledEmailProps) {
         zoneNote={props.zoneNote}
         rows={detailRows(props)}
       />
-      {props.manageUrl ? (
-        <>
-          <PrimaryButton href={props.manageUrl} brandColor={business.brandColor}>
-            Manage booking
-          </PrimaryButton>
-          <Text className="sw-muted" style={{ fontSize: 14, color: muted, margin: "10px 0 0" }}>
-            This link replaces the one in your earlier email.
-          </Text>
-        </>
-      ) : (
-        <Body2>To change it again, use the Manage booking link in your confirmation email.</Body2>
-      )}
+      <PrimaryButton href={props.manageUrl} brandColor={business.brandColor}>
+        Manage booking
+      </PrimaryButton>
+      <Text className="sw-muted" style={{ fontSize: 14, color: muted, margin: "10px 0 0" }}>
+        {props.movedByBusiness
+          ? "Reschedule or cancel from the same page."
+          : "This link replaces the ones in your earlier emails."}
+      </Text>
       <CalendarLinks googleUrl={props.googleUrl} icsUrl={props.icsUrl} />
       <Notice>{props.policy}</Notice>
       <Body2>Questions? Reply to this email and {business.name} will get back to you.</Body2>

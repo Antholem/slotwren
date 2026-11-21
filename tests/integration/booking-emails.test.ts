@@ -218,7 +218,7 @@ describe("booking emails", () => {
       expect(again.ok).toBe(true);
     });
 
-    it("by the business: the email says so and keeps the customer's link", async () => {
+    it("by the business: the email says so and carries a fresh link; earlier ones still work", async () => {
       const created = await booked(at("10:00"));
       mail.sent.length = 0;
       const moved = await rescheduleBooking(
@@ -226,9 +226,11 @@ describe("booking emails", () => {
         { startsAt: at("11:00").toISOString() },
         { now: NOW },
       );
-      expect(moved.ok && moved.data.manageToken).toBeNull();
+      expect(moved.ok).toBe(true);
+      if (!moved.ok) return;
       expect(mail.sent[0]!.html).toContain(`${a.business.name} moved your appointment.`);
-      expect(tokenFrom(mail.sent[0]!.html)).toBeUndefined();
+      expect(tokenFrom(mail.sent[0]!.html)).toBe(moved.data.manageToken);
+      expect(moved.data.manageToken).not.toBe(created.manageToken);
       const stillWorks = await cancelBooking(
         { kind: "customer", manageToken: created.manageToken },
         {},

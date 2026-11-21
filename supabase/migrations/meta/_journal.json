@@ -99,6 +99,27 @@
       "when": 1794317625183,
       "tag": "20261110133345_invites_by_email",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1795218069244,
+      "tag": "20261120234109_manage_tokens",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1795218088386,
+      "tag": "20261120234128_manage_tokens_access",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1795218124334,
+      "tag": "20261120234204_drop_booking_manage_token_hash",
+      "breakpoints": true
     }
   ]
 }

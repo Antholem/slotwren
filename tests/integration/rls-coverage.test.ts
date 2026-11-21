@@ -17,6 +17,8 @@ import { connectTestDb, listTenantTables } from "../support/db";
 // Tables that deliberately have RLS on but no policies: nobody but the server
 // (adminDb, which bypasses RLS) may touch them. Each needs a reason.
 const SERVER_ONLY_TABLES: Record<string, string> = {
+  manage_tokens:
+    "Manage-link token hashes; issued through private.mint_manage_token(), read by the server only",
   stripe_events: "Stripe webhook idempotency keys; written and read by the webhook only",
 };
 

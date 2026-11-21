@@ -1,4 +1,4 @@
-import { randomBytes, randomUUID } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 
 import { eq, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
@@ -84,7 +84,6 @@ export function bookingValues(
     bufferedEnd: new Date(endsAt.getTime() + service.bufferAfterMin * 60_000),
     source: "page",
     priceCents: service.priceCents,
-    manageTokenHash: randomUUID(),
     ...overrides,
   };
 }
@@ -93,4 +92,26 @@ export function bookingValues(
 export function pgErrorCode(error: unknown): string | undefined {
   const e = error as { code?: string; cause?: { code?: string } };
   return e?.cause?.code ?? e?.code;
+}
+
+/**
+ * A manage link for a booking: the raw token, its hash stored like the app
+ * does. Written directly (the server's own access); the app goes through
+ * private.mint_manage_token().
+ */
+export async function issueManageToken(
+  db: TestDb,
+  booking: { id: string; businessId: string; endsAt: Date },
+  overrides: Partial<typeof schema.manageTokens.$inferInsert> = {},
+) {
+  const token = randomBytes(32).toString("base64url");
+  await db.insert(schema.manageTokens).values({
+    businessId: booking.businessId,
+    bookingId: booking.id,
+    tokenHash: createHash("sha256").update(token).digest("hex"),
+    purpose: "created",
+    expiresAt: booking.endsAt,
+    ...overrides,
+  });
+  return token;
 }
