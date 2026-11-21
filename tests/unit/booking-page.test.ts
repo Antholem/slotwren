@@ -6,6 +6,7 @@ import {
   bookingSearch,
   cancellationPolicy,
   chipLabel,
+  lastBookableDate,
   nearestOpenings,
   parseBookingState,
   periodOf,
@@ -261,5 +262,34 @@ describe("fromNow", () => {
     expect(fromNow(later(22 * 60 + 10), now)).toBe("about 22 h from now");
     expect(fromNow(later(47 * 60), now)).toBe("about 47 h from now");
     expect(fromNow(later(3 * 24 * 60), now)).toBe("about 3 days from now");
+  });
+});
+
+describe("lastBookableDate", () => {
+  // 16:00 UTC: Fri 27 Nov 00:00 in Manila (UTC+8), still Thu 26 Nov 11:00 in New York.
+  const now = new Date("2026-11-26T16:00:00Z");
+  const manila = { timezone: "Asia/Manila", maxDaysAhead: 7 };
+
+  it("is the business's last date for a customer on its clock", () => {
+    // Manila today is Fri 27 Nov; 7 days later is Fri 4 Dec.
+    expect(lastBookableDate(now, manila, "Asia/Manila")).toBe("2026-12-04");
+  });
+
+  it("counts from the business's today, not a customer's behind it", () => {
+    // Their own today + 7 would be Thu 3 Dec; Fri 4 Dec 23:59 Manila is Fri 10:59 there.
+    expect(lastBookableDate(now, manila, "America/New_York")).toBe("2026-12-04");
+  });
+
+  it("reaches into the next day for a customer ahead of the business", () => {
+    // Fri 4 Dec 23:59 Manila is Sat 5 Dec 03:59 in Auckland (UTC+13 in summer).
+    expect(lastBookableDate(now, manila, "Pacific/Auckland")).toBe("2026-12-05");
+  });
+
+  it("doesn't stretch past the business's last day when the customer is ahead of the date line", () => {
+    // New York business, Thu 26 Nov today, 3 days: up to Sun 29 Nov 23:59 EST
+    // (Mon 30 Nov 12:59 in Manila).
+    const ny = { timezone: "America/New_York", maxDaysAhead: 3 };
+    expect(lastBookableDate(now, ny, "America/New_York")).toBe("2026-11-29");
+    expect(lastBookableDate(now, ny, "Asia/Manila")).toBe("2026-11-30");
   });
 });

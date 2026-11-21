@@ -14,6 +14,7 @@ import {
   bookingHref,
   cancellationPolicy,
   chipLabel,
+  lastBookableDate,
   nearestOpenings,
   PERIODS,
   periodOf,
@@ -107,7 +108,8 @@ function TimeStepIn({
   const clock = zoneClock(zone);
   const nowMs = Date.parse(now);
   const today = clock.parts(nowMs).date;
-  const lastDate = nextDate(today, business.maxDaysAhead);
+  // On the business's clock, like the slot engine (L4).
+  const lastDate = lastBookableDate(new Date(nowMs), business, zone);
   const requested = state.date && state.date >= today && state.date <= lastDate ? state.date : null;
   const weekStart = nextDate(today, 7 * Math.floor(daysBetween(today, requested ?? today) / 7));
   const weekDates = Array.from({ length: 7 }, (_, i) => nextDate(weekStart, i));
@@ -443,7 +445,8 @@ function DayStrip({
   return (
     <fieldset>
       <legend className="sr-only">Day</legend>
-      <div className="grid grid-cols-7 gap-1.5 sm:gap-3">
+      {/* Below 360 px seven columns get too narrow to read: scroll instead (L1). */}
+      <div className="-mx-1 grid grid-cols-7 gap-1.5 px-1 max-[359px]:flex max-[359px]:snap-x max-[359px]:overflow-x-auto max-[359px]:py-1 sm:gap-3">
         {dates.map((date) => {
           const day = week?.days[date];
           const open = day?.available.length ?? 0;
@@ -466,7 +469,7 @@ function DayStrip({
             <label
               key={date}
               className={cn(
-                "flex min-h-18 cursor-pointer flex-col items-center justify-center gap-0.5 rounded-xl border py-2 text-center transition-colors",
+                "flex min-h-18 cursor-pointer flex-col items-center justify-center gap-0.5 rounded-xl border py-2 text-center transition-colors max-[359px]:w-16 max-[359px]:shrink-0 max-[359px]:snap-start",
                 FOCUS_RING,
                 isSelected
                   ? "border-primary bg-primary text-primary-foreground"
