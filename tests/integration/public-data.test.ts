@@ -147,10 +147,12 @@ describe("public data", () => {
   });
 
   describe("the booking page", () => {
-    // Mia does the haircut. Jonah left (inactive), Kai does nothing yet, one
-    // service is archived and another only Jonah did: none of those show.
+    // Mia does the haircut. Jonah left (inactive), Kai does nothing yet, Noor
+    // has no working hours, one service is archived and another only Jonah
+    // did: none of those show.
     let jonahId: string;
     let kaiId: string;
+    let noorId: string;
     let retiredId: string;
     let unstaffedId: string;
 
@@ -168,15 +170,17 @@ describe("public data", () => {
           },
         })
         .where(eq(schema.businesses.id, businessId));
-      const [jonah, kai] = await db
+      const [jonah, kai, noor] = await db
         .insert(schema.staff)
         .values([
           { businessId, name: "Jonah", color: "violet", active: false },
           { businessId, name: "Kai", color: "pink" },
+          { businessId, name: "Noor", color: "teal" },
         ])
         .returning({ id: schema.staff.id });
       jonahId = jonah!.id;
       kaiId = kai!.id;
+      noorId = noor!.id;
       const [retired, unstaffed] = await db
         .insert(schema.services)
         .values([
@@ -189,6 +193,7 @@ describe("public data", () => {
       await db.insert(schema.staffServices).values([
         { businessId, staffId: fixture.staff.id, serviceId: fixture.service.id },
         { businessId, staffId: jonahId, serviceId: fixture.service.id },
+        { businessId, staffId: noorId, serviceId: fixture.service.id },
         { businessId, staffId: jonahId, serviceId: unstaffedId },
         { businessId, staffId: fixture.staff.id, serviceId: retiredId },
       ]);
@@ -238,6 +243,7 @@ describe("public data", () => {
         "ownerNewBookingEmail",
         kaiId, // does nothing bookable
         jonahId, // inactive
+        noorId, // no working hours, so no times
         retiredId, // archived
         unstaffedId, // only an inactive person does it
       ]) {
