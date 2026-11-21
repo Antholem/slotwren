@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server";
 
 import { SLUG_PATTERN } from "@/lib/slug";
+import type { RlsClaims } from "@/server/db/client";
 import { getAccountStatus } from "@/server/db/queries/onboarding";
 import { getBookingConfirmation } from "@/server/db/queries/public/booking-page";
 import { findBookingByManageToken } from "@/server/db/queries/public/bookings";
@@ -12,7 +13,8 @@ import { redirectWithSession, updateSession } from "@/server/supabase/proxy";
  * Refreshes the Supabase session and routes by auth state:
  * - /app/* and /onboarding/* need a signed-in user, else /sign-in?next=…
  * - /app/* also needs a live business, else /onboarding (which resumes the
- *   wizard where the owner left off)
+ *   wizard where the owner left off). Checked once per user, then remembered
+ *   in a cookie (see readyGate)
  * - /sign-in while signed in goes to /app
  * - /b/<slug>, /b/<slug>/booked/<id> and /m/<token> (no session): unknown
  *   links get a real 404
@@ -37,10 +39,34 @@ export async function proxy(request: NextRequest) {
     return redirectWithSession(request, response, `/sign-in?next=${next}`);
   }
 
-  if (isAppPath(pathname) && (await getAccountStatus(claims)) !== "ready") {
+  if (isAppPath(pathname)) return readyGate(request, response, claims);
+  // Onboarding (a first business, or another one): check again next time.
+  if (request.cookies.has(READY_COOKIE)) response.cookies.delete(READY_COOKIE);
+  return response;
+}
+
+/**
+ * Remembers that this user has a live business, so the database is asked once
+ * rather than on every /app request. Safe as a hint: it only skips a redirect.
+ * Every dashboard page and action still loads the member's live businesses
+ * through getDashboardContext(), which sends anyone without one to
+ * /onboarding. Keyed to the user id, so another account on this browser is
+ * checked afresh; visiting /onboarding clears it.
+ */
+const READY_COOKIE = "sw_ready";
+
+async function readyGate(request: NextRequest, response: NextResponse, claims: RlsClaims) {
+  if (request.cookies.get(READY_COOKIE)?.value === claims.sub) return response;
+  if ((await getAccountStatus(claims)) !== "ready") {
     return redirectWithSession(request, response, "/onboarding");
   }
-
+  response.cookies.set(READY_COOKIE, claims.sub, {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: request.nextUrl.protocol === "https:",
+    path: "/",
+    maxAge: 60 * 60 * 24 * 30,
+  });
   return response;
 }
 
