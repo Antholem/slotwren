@@ -1,8 +1,15 @@
 import "server-only";
 
+import { sendCancellationEmail } from "@/server/booking/cancellation-emails";
 import { sendReminder } from "@/server/booking/reminders";
 
-import { inngest, REMINDER_EVENT, reminderEventSchema } from "./client";
+import {
+  CANCELLATION_EMAILS_EVENT,
+  cancellationEmailsSchema,
+  inngest,
+  REMINDER_EVENT,
+  reminderEventSchema,
+} from "./client";
 
 /**
  * Waits until the planned time, then sends the reminder (if the booking still
@@ -30,4 +37,28 @@ export const bookingReminder = inngest.createFunction(
   },
 );
 
-export const functions = [bookingReminder];
+/**
+ * The customers' emails after the team cancels several bookings at once.
+ * One step per booking: a retry never sends the same email twice.
+ */
+export const cancellationEmails = inngest.createFunction(
+  {
+    id: "booking-cancellation-emails",
+    name: "Cancellation emails",
+    triggers: [{ event: CANCELLATION_EMAILS_EVENT }],
+    retries: 3,
+  },
+  async ({ event, step }) => {
+    const data = cancellationEmailsSchema.parse(event.data);
+    let sent = 0;
+    for (const bookingId of data.bookingIds) {
+      const delivered = await step.run(`email-${bookingId}`, () =>
+        sendCancellationEmail(data.businessId, bookingId, data.message),
+      );
+      if (delivered) sent++;
+    }
+    return { sent, of: data.bookingIds.length };
+  },
+);
+
+export const functions = [bookingReminder, cancellationEmails];

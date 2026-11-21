@@ -10,10 +10,13 @@ import { isUniqueViolation, pgError } from "@/server/db/errors";
 import type { BookingStore, BookingSummary, SlotContext } from "@/server/db/queries/booking-store";
 import { withMemberBookings } from "@/server/db/queries/bookings";
 import { findBookingByManageToken, withPublicBookings } from "@/server/db/queries/public/bookings";
+import { afterResponse } from "@/server/after-response";
+import { emailConfigured } from "@/server/email/config";
 
+import { queueCancellationEmails } from "./cancellation-emails";
 import { generateBookingCode } from "./codes";
 import { notifyBookingCancelled, notifyBookingCreated, notifyBookingRescheduled } from "./notify";
-import { clearReminder, scheduleReminder } from "./reminders";
+import { clearReminder, clearReminders, scheduleReminder } from "./reminders";
 import { getAvailableSlots, type Slot } from "./slots";
 import { generateToken, hashToken } from "./tokens";
 
@@ -128,8 +131,19 @@ export type MovedBooking = {
 export type CancelledBooking = {
   id: string;
   code: string;
-  /** Null when no email was asked for; otherwise whether it went out. */
+  /**
+   * Null when no email was asked for; otherwise whether it went out (in a
+   * request it goes after the response: whether email is set up).
+   */
   notified: boolean | null;
+};
+
+export type CancelledBookings = {
+  cancelled: number;
+  /** Changed meanwhile, or not this member's to cancel. */
+  notCancelled: number;
+  /** Customers emailed, or about to be. */
+  notified: number;
 };
 
 const MIN = 60_000;
@@ -291,10 +305,12 @@ export async function createBooking(
         channel.kind === "public"
           ? await withPublicBookings(channel.businessId, work)
           : await withMemberBookings(channel.actor.claims, channel.actor.businessId, work);
-      // After the commit, and never able to undo it.
+      // After the commit (and the response), and never able to undo it.
       if (summary) {
-        await notifyBookingCreated(summary, created.manageToken, now);
-        await scheduleReminder(summary, now);
+        await afterResponse(async () => {
+          await notifyBookingCreated(summary, created.manageToken, now);
+          await scheduleReminder(summary, now);
+        }, undefined);
       }
       return ok(created);
     } catch (error) {
@@ -337,7 +353,11 @@ async function open(access: BookingAccess, now: Date): Promise<Opened | null> {
 }
 
 /** Lock the booking and check it may still change. Throws Rollback otherwise. */
-async function lockForChange(store: BookingStore, opened: Opened, now: Date) {
+async function lockForChange(
+  store: BookingStore,
+  opened: Pick<Opened, "bookingId" | "byCustomer">,
+  now: Date,
+) {
   const { booking, visible } = await store.lockBooking(opened.bookingId);
   if (!booking) {
     throw new Rollback(
@@ -424,18 +444,21 @@ export async function rescheduleBooking(
         summary: await store.summary(booking.id),
       };
     });
-    if (result.summary) {
-      await scheduleReminder(result.summary, now);
-      await notifyBookingRescheduled(
-        result.summary,
-        {
-          previousStart: result.previousStart,
-          previousStaffId: result.previousStaffId,
-          manageToken: result.moved.manageToken,
-          byCustomer: opened.byCustomer,
-        },
-        now,
-      );
+    const { summary } = result;
+    if (summary) {
+      await afterResponse(async () => {
+        await scheduleReminder(summary, now);
+        await notifyBookingRescheduled(
+          summary,
+          {
+            previousStart: result.previousStart,
+            previousStaffId: result.previousStaffId,
+            manageToken: result.moved.manageToken,
+            byCustomer: opened.byCustomer,
+          },
+          now,
+        );
+      }, undefined);
     }
     return ok(result.moved);
   } catch (error) {
@@ -467,35 +490,121 @@ export async function cancelBooking(
 
   let summary: BookingSummary | null;
   try {
-    summary = await opened.run(async (store) => {
-      const booking = await lockForChange(store, opened, now);
-      const cancelled = await store.cancelBooking(booking.id, {
-        cancelledAt: now,
-        cancelledBy: opened.byCustomer ? "customer" : "staff",
-        cancelReason: parsed.data.reason,
+    summary = await opened.run((store) =>
+      cancelInStore(store, opened, { reason: parsed.data.reason, notify }, now),
+    );
+  } catch (error) {
+    return settleError(error);
+  }
+
+  const id = summary?.id ?? opened.bookingId;
+  const code = summary?.code ?? "";
+  if (!summary) return ok({ id, code, notified: null });
+  const cancelled = summary;
+  // Customers always get a receipt; the team chooses whether to tell them.
+  const email = notify || opened.byCustomer;
+  const notified = await afterResponse(
+    async () => {
+      // Any planned reminder is dropped (the job would skip it anyway).
+      await clearReminder(cancelled, now);
+      if (!email) return null;
+      return notifyBookingCancelled(cancelled, {
+        byBusiness: !opened.byCustomer,
+        message: customerMessage,
       });
-      if (!cancelled) throw new Rollback(err("forbidden", BOOKING_MESSAGES.forbidden));
-      await store.addEvent({
-        bookingId: booking.id,
-        type: "cancelled",
-        actor: opened.byCustomer ? "customer" : "staff",
-        data: { reason: parsed.data.reason, notified: notify },
-      });
-      return store.summary(booking.id);
+    },
+    email ? emailConfigured() : null,
+  );
+  return ok({ id, code, notified });
+}
+
+/** Cancel one booking inside the caller's transaction. Throws Rollback when it can't. */
+async function cancelInStore(
+  store: BookingStore,
+  target: Pick<Opened, "bookingId" | "byCustomer">,
+  { reason, notify }: { reason: string | null; notify: boolean },
+  now: Date,
+) {
+  const booking = await lockForChange(store, target, now);
+  const cancelled = await store.cancelBooking(booking.id, {
+    cancelledAt: now,
+    cancelledBy: target.byCustomer ? "customer" : "staff",
+    cancelReason: reason,
+  });
+  if (!cancelled) throw new Rollback(err("forbidden", BOOKING_MESSAGES.forbidden));
+  await store.addEvent({
+    bookingId: booking.id,
+    type: "cancelled",
+    actor: target.byCustomer ? "customer" : "staff",
+    data: { reason, notified: notify },
+  });
+  return store.summary(booking.id);
+}
+
+/**
+ * Cancel several bookings for the team at once (time off over a busy day):
+ * one transaction, then one Inngest event that emails each customer, so the
+ * owner isn't kept waiting on an email per booking. Bookings that changed
+ * meanwhile, or aren't this member's to cancel, are counted and left alone.
+ */
+export async function cancelBookingsForTeam(
+  actor: Actor,
+  bookingIds: string[],
+  input: unknown,
+  { now = new Date(), customerMessage }: { now?: Date; customerMessage: string },
+): Promise<Result<CancelledBookings, BookingError>> {
+  const parsed = cancelSchema.safeParse(input ?? {});
+  if (!parsed.success) return invalid(parsed.error);
+  const distinct = [...new Set(bookingIds)];
+  const ids = distinct.filter((id) => z.uuid().safeParse(id).success);
+  let notCancelled = distinct.length - ids.length;
+
+  let summaries: BookingSummary[];
+  try {
+    summaries = await withMemberBookings(actor.claims, actor.businessId, async (store) => {
+      const done: BookingSummary[] = [];
+      for (const bookingId of ids) {
+        try {
+          const summary = await cancelInStore(
+            store,
+            { bookingId, byCustomer: false },
+            { reason: parsed.data.reason, notify: true },
+            now,
+          );
+          if (summary) done.push(summary);
+        } catch (error) {
+          // A check that failed before anything was written: skip this one.
+          if (!(error instanceof Rollback)) throw error;
+          notCancelled++;
+        }
+      }
+      return done;
     });
   } catch (error) {
     return settleError(error);
   }
 
-  // Any planned reminder is dropped (the job would skip it anyway).
-  if (summary) await clearReminder(summary, now);
-  const id = summary?.id ?? opened.bookingId;
-  const code = summary?.code ?? "";
-  // Customers always get a receipt; the team chooses whether to tell them.
-  if (!summary || (!notify && !opened.byCustomer)) return ok({ id, code, notified: null });
-  const sent = await notifyBookingCancelled(summary, {
-    byBusiness: !opened.byCustomer,
-    message: customerMessage,
-  });
-  return ok({ id, code, notified: sent });
+  const cancelled = summaries.length;
+  if (cancelled === 0) return ok({ cancelled, notCancelled, notified: 0 });
+  const willEmail = emailConfigured() ? cancelled : 0;
+  const notified = await afterResponse(async () => {
+    await clearReminders(summaries, now);
+    const queued = await queueCancellationEmails({
+      businessId: actor.businessId,
+      bookingIds: summaries.map((s) => s.id),
+      message: customerMessage,
+    });
+    if (queued) return willEmail;
+    // No Inngest (local without the dev server, tests): send them here.
+    let sent = 0;
+    for (const summary of summaries) {
+      const delivered = await notifyBookingCancelled(summary, {
+        byBusiness: true,
+        message: customerMessage,
+      });
+      if (delivered) sent++;
+    }
+    return sent;
+  }, willEmail);
+  return ok({ cancelled, notCancelled, notified });
 }
