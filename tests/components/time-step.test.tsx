@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -49,7 +49,10 @@ const renderStep = () =>
   );
 
 describe("TimeStep when loading times fails", () => {
-  afterEach(() => vi.unstubAllGlobals());
+  afterEach(() => {
+    cleanup(); // no Vitest globals, so Testing Library doesn't clean up by itself
+    vi.unstubAllGlobals();
+  });
 
   it("shows the rate limit's own message, and Try again asks again", async () => {
     const message = "You're checking times very quickly. Wait a moment, then try again.";
