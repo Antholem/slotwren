@@ -262,8 +262,6 @@ async function main() {
             priceCents: booking.priceCents,
             customerNotes: booking.customerNotes,
             customerTimezone: booking.customerTimezone,
-            // Seeded links are never sent, so the raw tokens are discarded.
-            manageTokenHash: hashToken(generateToken()),
             createdByUserId: booking.source === "manual" ? ownerId : null,
             cancelledAt: booking.cancelledAt,
             cancelledBy: booking.cancelledAt ? ("customer" as const) : null,
@@ -272,6 +270,23 @@ async function main() {
           })),
         )
         .returning({ id: schema.bookings.id });
+
+      // One manage link per active booking. Seeded links are never sent, so the
+      // raw tokens are discarded; only hashes exist, like real ones.
+      const live = generated.bookings
+        .map((booking, index) => ({ booking, id: bookingRows[index]!.id }))
+        .filter(({ booking }) => booking.status === "confirmed" || booking.status === "pending");
+      if (live.length > 0) {
+        await tx.insert(schema.manageTokens).values(
+          live.map(({ booking, id }) => ({
+            businessId,
+            bookingId: id,
+            tokenHash: hashToken(generateToken()),
+            purpose: "created" as const,
+            expiresAt: booking.endsAt,
+          })),
+        );
+      }
 
       await tx
         .insert(schema.bookingEvents)

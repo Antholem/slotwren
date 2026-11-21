@@ -116,7 +116,6 @@ describe("booking guards", () => {
 
     it.each([
       ["code", { code: "SW-FAKE-00" }],
-      ["manage-token hash", { manageTokenHash: "0".repeat(64) }],
       ["source", { source: "ai" as const }],
       ["business", { businessId: "00000000-0000-0000-0000-000000000000" }],
     ])("nobody signed in changes its %s", async (_field, change) => {
@@ -125,7 +124,6 @@ describe("booking guards", () => {
       expect(await outcome(staffer, change)).toBe("42501");
       const after = await bookingRow();
       expect(after.code).toBe(before.code);
-      expect(after.manageTokenHash).toBe(before.manageTokenHash);
       expect(after.source).toBe(before.source);
     });
   });

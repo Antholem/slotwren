@@ -1,6 +1,7 @@
 "use client";
 
 import { ArrowDown, CalendarDays, Loader2 } from "lucide-react";
+import type { Route } from "next";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
@@ -87,10 +88,13 @@ export function ManageActions({
   token,
   cancel,
   businessName,
+  confirmationHref,
 }: {
   token: string;
   cancel: CancelAction;
   businessName: string;
+  /** Where to land after cancelling: cancelling revokes this link too. */
+  confirmationHref: Route;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -106,8 +110,9 @@ export function ManageActions({
         return;
       }
       setOpen(false);
-      router.replace(manageHref(token, { done: "cancelled" }));
-      router.refresh();
+      // Cancelling revoked every manage link, this one included: the booking's
+      // confirmation page (keyed by its ID) shows the cancelled state.
+      router.replace(confirmationHref);
     });
   }
 

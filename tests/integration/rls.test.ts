@@ -12,6 +12,7 @@ import {
   bookingValues,
   connectTestDb,
   createFixtureBusiness,
+  issueManageToken,
   listTenantTables,
   pgErrorCode,
 } from "../support/db";
@@ -92,6 +93,7 @@ async function fillTenant(f: Fixture, startsAt: Date) {
     endsAt: new Date("2030-01-02T00:00:00Z"),
   });
   const [booking] = await db.insert(schema.bookings).values(bookingValues(f, startsAt)).returning();
+  await issueManageToken(db, booking!);
   await db
     .insert(schema.bookingEvents)
     .values({ businessId, bookingId: booking!.id, type: "created", actor: "customer" });
@@ -233,12 +235,17 @@ describe("row level security", () => {
     ["a staff member of A", () => staffA],
   ])("isolation: %s", (_who, member) => {
     it.each(TENANT_TABLES)("reads zero %s rows from B", async (table) => {
-      const rows = await withRls(member(), (tx) =>
-        tx.execute<{ n: number }>(
-          sql`select count(*)::int as n from ${sql.identifier(table)} where business_id = ${b.business.id}`,
-        ),
-      );
-      expect(rows[0]!.n).toBe(0);
+      // RLS hides every row, or (server-only tables) there's no grant at all.
+      try {
+        const rows = await withRls(member(), (tx) =>
+          tx.execute<{ n: number }>(
+            sql`select count(*)::int as n from ${sql.identifier(table)} where business_id = ${b.business.id}`,
+          ),
+        );
+        expect(rows[0]!.n).toBe(0);
+      } catch (error) {
+        expect(pgErrorCode(error)).toBe(INSUFFICIENT_PRIVILEGE);
+      }
     });
 
     it("can't see business B or its settings", async () => {
@@ -379,15 +386,18 @@ describe("row level security", () => {
 
   describe("a signed-in user with no membership", () => {
     it("sees nothing at all, in any business", async () => {
-      const seen: Record<string, number> = {};
-      await withRls(outsider, async (tx) => {
-        for (const table of [...TENANT_TABLES, "businesses"]) {
-          const rows = await tx.execute<{ n: number }>(
-            sql`select count(*)::int as n from ${sql.identifier(table)}`,
+      const seen: Record<string, number | string> = {};
+      for (const table of [...TENANT_TABLES, "businesses"]) {
+        try {
+          const rows = await withRls(outsider, (tx) =>
+            tx.execute<{ n: number }>(sql`select count(*)::int as n from ${sql.identifier(table)}`),
           );
           seen[table] = rows[0]!.n;
+        } catch (error) {
+          // Server-only tables refuse outright: nothing seen either.
+          seen[table] = pgErrorCode(error) === INSUFFICIENT_PRIVILEGE ? 0 : String(error);
         }
-      });
+      }
       // Reads every row of every table unfiltered, including the seeded demo business.
       expect(
         Object.values(seen).every((n) => n === 0),
