@@ -57,7 +57,8 @@ export type BookingError =
   | "slot_unavailable"
   | "slot_taken"
   | "not_active"
-  | "too_late";
+  | "too_late"
+  | "too_early";
 
 export const BOOKING_MESSAGES = {
   serviceGone: "That service isn't available to book any more.",
@@ -66,6 +67,8 @@ export const BOOKING_MESSAGES = {
   taken: "That time was just taken. Pick another time.",
   forbidden: "You can change only your own bookings. Ask an owner to change anyone else's.",
   notActive: "This booking is already cancelled, so it can't be changed.",
+  tooEarly: "You can mark an appointment once it has started.",
+  alreadyMarked: "This appointment has already been marked. Refresh to see the latest.",
 } as const;
 
 const tooLate = (hours: number) =>
@@ -96,6 +99,10 @@ const rescheduleSchema = z.object({
   startsAt: instant,
   /** Default: keep the same staff member. */
   staffId: staffChoice.optional(),
+});
+
+const outcomeSchema = z.object({
+  outcome: z.enum(["completed", "no_show"], "Pick Complete or No-show."),
 });
 
 const cancelSchema = z.object({
@@ -137,6 +144,10 @@ export type CancelledBooking = {
    */
   notified: boolean | null;
 };
+
+export type BookingOutcome = "completed" | "no_show";
+
+export type RecordedOutcome = { id: string; status: BookingOutcome };
 
 export type CancelledBookings = {
   cancelled: number;
@@ -607,4 +618,57 @@ export async function cancelBookingsForTeam(
     return sent;
   }, willEmail);
   return ok({ cancelled, notCancelled, notified });
+}
+
+// ── outcome ───────────────────────────────────────────────────────────
+
+/**
+ * Mark how an appointment went: completed or no-show. Members only (owners
+ * any booking, staff their own, by RLS), once it has started, and only while
+ * it is still pending or confirmed. Marking it the same way twice (a double
+ * tap, two tabs) succeeds without writing again. Nobody is emailed.
+ */
+export async function recordOutcome(
+  actor: Actor,
+  bookingId: string,
+  input: unknown,
+  { now = new Date() }: { now?: Date } = {},
+): Promise<Result<RecordedOutcome, BookingError>> {
+  const parsed = outcomeSchema.safeParse(input);
+  if (!parsed.success) return invalid(parsed.error);
+  const { outcome } = parsed.data;
+  if (!z.uuid().safeParse(bookingId).success) {
+    return err("not_found", BOOKING_MESSAGES.bookingGone);
+  }
+
+  try {
+    return await withMemberBookings(actor.claims, actor.businessId, async (store) => {
+      const { booking, visible } = await store.lockBooking(bookingId);
+      if (!booking) {
+        return visible
+          ? err("forbidden", BOOKING_MESSAGES.forbidden)
+          : err("not_found", BOOKING_MESSAGES.bookingGone);
+      }
+      if (booking.status === outcome) return ok({ id: booking.id, status: outcome });
+      if (booking.status === "cancelled") return err("not_active", BOOKING_MESSAGES.notActive);
+      if (booking.status !== "pending" && booking.status !== "confirmed") {
+        return err("not_active", BOOKING_MESSAGES.alreadyMarked);
+      }
+      if (now.getTime() < booking.startsAt.getTime()) {
+        return err("too_early", BOOKING_MESSAGES.tooEarly);
+      }
+      if (!(await store.setOutcome(booking.id, outcome))) {
+        throw new Rollback(err("forbidden", BOOKING_MESSAGES.forbidden));
+      }
+      await store.addEvent({
+        bookingId: booking.id,
+        type: outcome,
+        actor: "staff",
+        data: { from: booking.status },
+      });
+      return ok({ id: booking.id, status: outcome });
+    });
+  } catch (error) {
+    return settleError(error);
+  }
 }

@@ -23,6 +23,7 @@ import { saveThemePreference, type ThemePreference } from "@/lib/theme";
 import { cn } from "@/lib/utils";
 
 import { NavList } from "./nav-list";
+import { ProfileDialog, type SaveProfile } from "./profile-dialog";
 import { titleFor } from "./nav-items";
 
 export type TopBarProps = {
@@ -30,7 +31,10 @@ export type TopBarProps = {
   businesses: { id: string; name: string }[];
   role: "owner" | "staff";
   email: string | null;
+  /** profiles.full_name; the menu falls back to the role without it. */
+  profileName: string | null;
   switchBusiness: (businessId: string) => Promise<void>;
+  saveProfile: SaveProfile;
 };
 
 const focusRing = "focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none";
@@ -75,7 +79,12 @@ export function TopBar(props: TopBarProps) {
       <BusinessSwitcher {...props} className="hidden lg:flex" />
       <div className="hidden flex-1 lg:block" />
 
-      <UserMenu role={props.role} email={props.email} />
+      <UserMenu
+        role={props.role}
+        email={props.email}
+        profileName={props.profileName}
+        saveProfile={props.saveProfile}
+      />
     </header>
   );
 }
@@ -141,9 +150,21 @@ const THEMES = [
   { value: "system", label: "System", icon: Monitor },
 ] as const;
 
-function UserMenu({ role, email }: { role: "owner" | "staff"; email: string | null }) {
+function UserMenu({
+  role,
+  email,
+  profileName,
+  saveProfile,
+}: {
+  role: "owner" | "staff";
+  email: string | null;
+  profileName: string | null;
+  saveProfile: SaveProfile;
+}) {
   const signOutForm = useRef<HTMLFormElement>(null);
+  const [profileOpen, setProfileOpen] = useState(false);
   const roleLabel = role === "owner" ? "Owner" : "Staff";
+  const displayName = profileName ?? roleLabel;
   const theme = useThemePreference();
 
   return (
@@ -151,7 +172,9 @@ function UserMenu({ role, email }: { role: "owner" | "staff"; email: string | nu
       <form ref={signOutForm} action="/auth/sign-out" method="post" className="hidden" />
       <DropdownMenu>
         <DropdownMenuTrigger
-          aria-label={`Account (${roleLabel})`}
+          aria-label={
+            profileName ? `Account: ${profileName} (${roleLabel})` : `Account (${roleLabel})`
+          }
           className={cn(
             "flex min-h-11 items-center gap-2 rounded-full pr-2 hover:bg-muted",
             focusRing,
@@ -160,15 +183,21 @@ function UserMenu({ role, email }: { role: "owner" | "staff"; email: string | nu
           <span className="flex size-11 items-center justify-center rounded-full bg-muted">
             <User aria-hidden className="size-5" />
           </span>
-          <span className="hidden text-label lg:inline">{roleLabel}</span>
+          <span className="hidden max-w-40 truncate text-label lg:inline">{displayName}</span>
           <ChevronDown aria-hidden className="hidden size-4 text-muted-foreground lg:block" />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-64">
           <DropdownMenuLabel className="font-normal">
-            <span className="block text-caption text-muted-foreground">Signed in as</span>
-            <span className="block truncate text-label">{email}</span>
+            {profileName && <span className="block truncate text-label">{profileName}</span>}
+            <span className="block text-caption text-muted-foreground">
+              {profileName ? roleLabel : "Signed in as"}
+            </span>
+            <span className="block truncate text-body-sm">{email}</span>
           </DropdownMenuLabel>
           <DropdownMenuSeparator />
+          <DropdownMenuItem className="min-h-11" onSelect={() => setProfileOpen(true)}>
+            {profileName ? "Edit profile" : "Add your name"}
+          </DropdownMenuItem>
           <DropdownMenuItem asChild className="min-h-11">
             <Link href="/app/live">Your booking link</Link>
           </DropdownMenuItem>
@@ -196,6 +225,13 @@ function UserMenu({ role, email }: { role: "owner" | "staff"; email: string | nu
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
+      <ProfileDialog
+        open={profileOpen}
+        onOpenChange={setProfileOpen}
+        name={profileName}
+        email={email}
+        saveProfile={saveProfile}
+      />
     </>
   );
 }

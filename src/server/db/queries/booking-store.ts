@@ -384,12 +384,31 @@ export function bookingStore(tx: Transaction, businessId: string) {
     },
 
     /**
+     * Record how an active booking went (completed or no-show). False if
+     * nothing was updated: it changed meanwhile, or RLS filtered it.
+     */
+    async setOutcome(bookingId: string, outcome: "completed" | "no_show"): Promise<boolean> {
+      const rows = await tx
+        .update(bookings)
+        .set({ status: outcome })
+        .where(
+          and(
+            eq(bookings.id, bookingId),
+            eq(bookings.businessId, businessId),
+            inArray(bookings.status, BLOCKING_STATUSES),
+          ),
+        )
+        .returning({ id: bookings.id });
+      return rows.length > 0;
+    },
+
+    /**
      * Append to the audit trail. Under withRls a trigger records the signed-in
      * member as the actor whatever is passed here.
      */
     async addEvent(event: {
       bookingId: string;
-      type: "created" | "rescheduled" | "cancelled";
+      type: "created" | "rescheduled" | "cancelled" | "completed" | "no_show";
       actor: "customer" | "staff" | "ai" | "system";
       data: Record<string, unknown>;
     }) {

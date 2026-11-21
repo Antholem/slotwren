@@ -5,7 +5,7 @@ import { Sidebar } from "@/components/dashboard/sidebar";
 import { TopBar, TopBarSkeleton } from "@/components/dashboard/top-bar";
 import { getDashboardContext } from "@/server/auth/dashboard";
 
-import { switchBusiness } from "./actions";
+import { saveProfileAction, switchBusiness } from "./actions";
 
 /**
  * Owner dashboard shell (docs/design/owner-dashboard/shell-*): sidebar on
@@ -29,14 +29,16 @@ export default function DashboardLayout({ children }: LayoutProps<"/app">) {
 }
 
 async function DashboardTopBar() {
-  const { business, businesses, role, user } = await getDashboardContext();
+  const { business, businesses, role, user, profileName } = await getDashboardContext();
   return (
     <TopBar
       business={{ id: business.id, name: business.name, logoUrl: business.logoUrl }}
       businesses={businesses.map((b) => ({ id: b.id, name: b.name }))}
       role={role}
       email={user.email}
+      profileName={profileName}
       switchBusiness={switchBusiness}
+      saveProfile={saveProfileAction}
     />
   );
 }

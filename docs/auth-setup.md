@@ -33,10 +33,9 @@ isn't paused.
 - [ ] **Site URL and redirect URLs.** Authentication → URL Configuration, as in
       [2b. Hosted Supabase](#2b-hosted-supabase-production), step 2. Without the
       redirect URLs, sign-in links fall back to the Site URL and lose the callback.
-- [ ] **Magic-link templates.** Magic link and Confirm signup, as in
-      [Hosted email setup](#hosted-email-setup-before-launch).
-- [ ] **SMTP.** Resend as the sender, also under
-      [Hosted email setup](#hosted-email-setup-before-launch).
+- [ ] **Email: SMTP, then templates.** Connect Resend as Supabase's custom SMTP, then paste
+      `supabase/templates/magic-link.html` into the Magic link and Confirm signup
+      templates. Both are under [Hosted email setup](#hosted-email-setup-before-launch).
 - [ ] **Google (optional).** [Enabling Google sign-in](#enabling-google-sign-in), steps 1
       and 2b. Skip it and the sign-in page simply shows email only.
 
