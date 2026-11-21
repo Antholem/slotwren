@@ -65,7 +65,22 @@ export function TimeStep(props: Props) {
 
 const daysBetween = (a: string, b: string) => (Date.parse(b) - Date.parse(a)) / 86_400_000;
 
-type Loaded = SlotsResponse | "error";
+/** A failed load: offline or a server error, or too many lookups (with the server's message). */
+type Failed = { failed: "error" } | { failed: "rate_limited"; message: string };
+type Loaded = SlotsResponse | Failed;
+const isLoaded = (week: Loaded | undefined): week is SlotsResponse => !!week && "days" in week;
+
+async function readSlots(response: Response): Promise<Loaded> {
+  if (response.ok) return (await response.json()) as SlotsResponse;
+  if (response.status === 429) {
+    const body = (await response.json().catch(() => ({}))) as { message?: string };
+    return {
+      failed: "rate_limited",
+      message: body.message ?? "You're checking times very quickly. Wait a moment, then try again.",
+    };
+  }
+  return { failed: "error" };
+}
 
 function TimeStepIn({
   zone,
@@ -96,9 +111,7 @@ function TimeStepIn({
   // No day chosen yet: start on the first day with times this week.
   const selectedDate =
     requested ??
-    (week && week !== "error"
-      ? weekDates.find((date) => week.days[date]?.available.length)
-      : undefined) ??
+    (isLoaded(week) ? weekDates.find((date) => week.days[date]?.available.length) : undefined) ??
     today;
   useEffect(() => {
     if (week) return;
@@ -112,11 +125,9 @@ function TimeStepIn({
       ...(manageToken ? { manage: manageToken } : {}),
     });
     fetch(`/api/slots/${slug}?${search}`, { signal: controller.signal })
-      .then(async (response): Promise<Loaded> =>
-        response.ok ? ((await response.json()) as SlotsResponse) : "error",
-      )
+      .then(readSlots)
       .catch((error: unknown): Loaded | null =>
-        error instanceof DOMException && error.name === "AbortError" ? null : "error",
+        error instanceof DOMException && error.name === "AbortError" ? null : { failed: "error" },
       )
       .then((loaded) => {
         if (loaded) setWeeks((all) => ({ ...all, [key]: loaded }));
@@ -124,7 +135,7 @@ function TimeStepIn({
     return () => controller.abort();
   }, [week, key, slug, service.id, state.staffId, weekStart, zone, clock, manageToken]);
 
-  const day = week && week !== "error" ? week.days[selectedDate] : undefined;
+  const day = isLoaded(week) ? week.days[selectedDate] : undefined;
   const available = day?.available ?? [];
   const [picked, setPicked] = useState<string | null>(state.start);
   const chosen = available.find((slot) => slot.start === picked) ?? null;
@@ -185,7 +196,7 @@ function TimeStepIn({
           today={today}
           lastDate={lastDate}
           selected={selectedDate}
-          week={week && week !== "error" ? week : null}
+          week={isLoaded(week) ? week : null}
           label={dateLabel}
           onSelect={(date) => go(date)}
         />
@@ -194,10 +205,21 @@ function TimeStepIn({
     >
       {!week ? (
         <TimesSkeleton label={`Checking times for ${dateLabel(selectedDate, "EEE d MMM")}…`} />
-      ) : week === "error" ? (
+      ) : !isLoaded(week) ? (
         <div role="alert" className="flex flex-col items-start gap-3 rounded-2xl border p-6">
-          <p className="text-title">We couldn&rsquo;t load the times</p>
-          <p className="text-body text-muted-foreground">Check your connection and try again.</p>
+          {week.failed === "rate_limited" ? (
+            <>
+              <p className="text-title">Slow down a little</p>
+              <p className="text-body text-muted-foreground">{week.message}</p>
+            </>
+          ) : (
+            <>
+              <p className="text-title">We couldn&rsquo;t load the times</p>
+              <p className="text-body text-muted-foreground">
+                Check your connection and try again.
+              </p>
+            </>
+          )}
           <Button
             variant="secondary"
             className="h-11 px-4"

@@ -6,6 +6,7 @@ import { eq } from "drizzle-orm";
 import * as schema from "@/server/db/schema";
 
 import {
+  asNewVisitor,
   bookableBusinesses,
   bookThroughPage,
   choose,
@@ -26,6 +27,7 @@ const businesses = bookableBusinesses();
 const { db } = businesses;
 test.afterAll(() => businesses.cleanup());
 test.use({ timezoneId: "Asia/Manila" });
+test.beforeEach(({ page }) => asNewVisitor(page));
 
 const bookingRow = async (id: string) =>
   (await db.select().from(schema.bookings).where(eq(schema.bookings.id, id)))[0]!;
