@@ -87,7 +87,8 @@ async function firstOpening(
 
 /**
  * Available and taken times in `[from, to)`, grouped by the customer's local
- * date, plus the next opening after `to`. Null if the service isn't bookable.
+ * date, plus the next opening after `to` when the window's last day has none.
+ * Null if the service isn't bookable.
  */
 export async function getPublicSlots({
   businessId,
@@ -127,6 +128,13 @@ export async function getPublicSlots({
   for (const slot of available) day(slot.local.date).available.push(chip(slot, slot.staffId));
   for (const slot of taken) day(slot.local.date).taken.push(chip(slot, null));
 
+  // The page shows `next` only when no day after the chosen one has times. With
+  // times on the window's last day that never happens, and past the booking
+  // window there's nothing to find: skip the look-ahead (M8).
+  const lastDate = zoneClock(timezone).parts(to.getTime() - 1).date;
+  if (days[lastDate]?.available.length || to >= bookableUntil(ctx, now)) {
+    return { days, next: null };
+  }
   const next = (
     await firstOpening(businessId, serviceId, [staffId], to, now, timezone, excludeBookingId)
   ).get(staffId);

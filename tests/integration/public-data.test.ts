@@ -283,8 +283,36 @@ describe("public data", () => {
       });
       expect(day.taken.map((t) => t.start)).toContain("2026-11-03T05:00:00.000Z");
       expect(day.taken.every((t) => t.staffId === null)).toBe(true);
-      expect(slots!.next).not.toBeNull();
+      // The last day has times, so the page never needs the next opening.
+      expect(slots!.next).toBeNull();
       expectNothingPrivate(slots);
+
+      // Mia is off all of Wed 4 Nov: with nothing on the window's last day,
+      // the next opening (Thursday) comes along.
+      const [off] = await db
+        .insert(schema.timeOff)
+        .values({
+          businessId: fixture.business.id,
+          staffId: fixture.staff.id,
+          startsAt: new Date("2026-11-03T16:00:00Z"),
+          endsAt: new Date("2026-11-04T16:00:00Z"),
+        })
+        .returning();
+      try {
+        const empty = await getPublicSlots({
+          businessId: fixture.business.id,
+          serviceId: fixture.service.id,
+          staffId: "any",
+          from: new Date("2026-11-02T16:00:00Z"),
+          to: new Date("2026-11-04T16:00:00Z"),
+          timezone: "Asia/Manila",
+          now,
+        });
+        expect(empty!.days["2026-11-04"]?.available ?? []).toEqual([]);
+        expect(empty!.next).toMatchObject({ date: "2026-11-05", time: "09:00" });
+      } finally {
+        await db.delete(schema.timeOff).where(eq(schema.timeOff.id, off!.id));
+      }
 
       const openings = await getNextOpenings({
         businessId: fixture.business.id,
