@@ -30,7 +30,8 @@ function read(bookingId: string): string | null {
 
 const subscribe = () => () => {};
 
-export function ManageLink({ bookingId }: { bookingId: string }) {
+/** `fallback`: what to say in another tab or browser, where the token isn't. */
+export function ManageLink({ bookingId, fallback }: { bookingId: string; fallback: string }) {
   const token = useSyncExternalStore(
     subscribe,
     () => read(bookingId),
@@ -44,8 +45,6 @@ export function ManageLink({ bookingId }: { bookingId: string }) {
       Manage booking
     </Link>
   ) : (
-    <p className="text-center text-body text-muted-foreground">
-      To reschedule or cancel, use the Manage booking link in your confirmation email.
-    </p>
+    <p className="text-center text-body text-muted-foreground">{fallback}</p>
   );
 }

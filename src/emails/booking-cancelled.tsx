@@ -36,7 +36,7 @@ export function BookingCancelledEmail(props: BookingCancelledEmailProps) {
       <Lead>
         {props.byBusiness
           ? `${business.name} had to cancel your appointment. Sorry for the change of plans.`
-          : `This confirms your cancellation. ${business.name} has been told.`}
+          : `This confirms your cancellation. The time is free again in ${business.name}'s calendar.`}
       </Lead>
       <AppointmentCard
         date={props.date}

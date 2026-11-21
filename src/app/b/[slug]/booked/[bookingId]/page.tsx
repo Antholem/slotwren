@@ -14,6 +14,7 @@ import { bookingHref } from "@/lib/booking-page";
 import { googleCalendarUrl } from "@/lib/calendar";
 import { formatPrice } from "@/lib/money";
 import { loadConfirmation } from "@/server/booking/confirmation";
+import { emailConfigured } from "@/server/email/send";
 
 /*
  * After Confirm (docs/design/booking-flow/5-confirmed): the booking, its code
@@ -56,6 +57,7 @@ async function Booked({ params, searchParams }: PageProps<"/b/[slug]/booked/[boo
   const { business } = data;
   const css = brandThemeCss(business.brandColor);
   const cancelled = booking.status === "cancelled";
+  const emailed = emailConfigured();
   const freeUntil = new Date(
     booking.startsAt.getTime() - business.cancellationWindowHours * 3_600_000,
   );
@@ -102,7 +104,10 @@ async function Booked({ params, searchParams }: PageProps<"/b/[slug]/booked/[boo
           <p className="max-w-sm text-body text-muted-foreground">
             {cancelled
               ? `This booking with ${business.name} was cancelled.`
-              : "We've emailed your confirmation. Reschedule or cancel any time from Manage booking."}
+              : // Only claim the email when one really went (L3).
+                emailed
+                ? "We've emailed your confirmation, with a link to reschedule or cancel."
+                : "Note your booking code. Reschedule or cancel from Manage booking below."}
           </p>
         </div>
 
@@ -112,8 +117,8 @@ async function Booked({ params, searchParams }: PageProps<"/b/[slug]/booked/[boo
             className="flex items-center gap-3 rounded-xl border border-success bg-card p-4 text-body"
           >
             <Check aria-hidden className="size-5 shrink-0 text-success-text" />
-            You&rsquo;ve cancelled your booking. We&rsquo;ve emailed you a receipt, and{" "}
-            {business.name} has been told.
+            You&rsquo;ve cancelled your booking{emailed ? " and we’ve emailed you a receipt" : ""}.
+            The time is free again in {business.name}&rsquo;s calendar.
           </p>
         )}
 
@@ -176,7 +181,14 @@ async function Booked({ params, searchParams }: PageProps<"/b/[slug]/booked/[boo
                 </Button>
               </div>
             </section>
-            <ManageLink bookingId={booking.id} />
+            <ManageLink
+              bookingId={booking.id}
+              fallback={
+                emailed
+                  ? "To reschedule or cancel, use the Manage booking link in your confirmation email."
+                  : `To reschedule or cancel, contact ${business.name}.`
+              }
+            />
             <p className="text-center text-body-sm text-muted-foreground">
               {freeUntil <= now ? (
                 `It's within ${business.cancellationWindowHours} h of your appointment, so contact ${business.name} to change it.`

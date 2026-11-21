@@ -94,7 +94,9 @@ export function DetailsStep({
       });
       if (result.ok) {
         rememberManageToken(result.data.bookingId, result.data.manageToken);
-        router.push(`/b/${slug}/booked/${result.data.bookingId}` as Route);
+        // Replace, not push: Back from the confirmation must not reopen a
+        // form that would book the same time again.
+        router.replace(`/b/${slug}/booked/${result.data.bookingId}` as Route);
         return;
       }
       if (result.error.code === "slot_taken" || result.error.code === "slot_unavailable") {
