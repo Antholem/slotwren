@@ -10,6 +10,17 @@ export function formatPrice(cents: number, currency: string, locale = "en-US"): 
   }).format(cents / 100);
 }
 
+/** A total (revenue), not a price: "$2,340", "$35.50", and "$0" rather than "Free". */
+export function formatAmount(cents: number, currency: string, locale = "en-US"): string {
+  const whole = cents % 100 === 0;
+  return new Intl.NumberFormat(locale, {
+    style: "currency",
+    currency,
+    minimumFractionDigits: whole ? 0 : 2,
+    maximumFractionDigits: 2,
+  }).format(cents / 100);
+}
+
 /** "$" for USD, "€" for EUR, … */
 export function currencySymbol(currency: string, locale = "en-US"): string {
   return (
