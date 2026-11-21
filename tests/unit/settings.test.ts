@@ -164,6 +164,8 @@ describe("businessSettingsSchema", () => {
     expect(result.brandColor).toBe("#0F766E");
     // Blank contact details are cleared, not saved as "".
     expect(result).toMatchObject({ contactEmail: null, phone: null, address: null });
+    // The server action parses the parsed form again: that has to pass too.
+    expect(businessSettingsSchema.parse(result)).toEqual(result);
   });
 
   it("checks the contact details, trimmed", () => {

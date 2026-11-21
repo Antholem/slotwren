@@ -71,9 +71,15 @@ export const bookingRulesSchema = z
   });
 export type BookingRulesInput = z.input<typeof bookingRulesSchema>;
 
-/** Optional text: blank is null. */
+/**
+ * Optional text: blank is null. Accepts null too, so the parsed form (which
+ * the server action parses again) still passes.
+ */
 const optional = (schema: z.ZodString, check: (v: string) => boolean, message: string) =>
-  schema.refine((v) => v === "" || check(v), message).transform((v) => v || null);
+  schema
+    .nullable()
+    .refine((v) => !v || check(v), message)
+    .transform((v) => v || null);
 
 /**
  * How customers reach the business: replies to booking emails, and the manage
