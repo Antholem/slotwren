@@ -5,6 +5,9 @@ name: Migrate production
 # workflow so CI's cancel-in-progress can't stop a push halfway, and one at a
 # time so two merges can't race.
 #
+# Always --db-url: the target is explicit, whatever the CLI's default target
+# (newer CLIs default to the local database).
+#
 # Secret: SUPABASE_DB_URL, the production session pooler connection string
 # (Supabase dashboard → Connect → Session pooler), password percent-encoded.
 
