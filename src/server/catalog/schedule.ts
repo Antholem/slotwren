@@ -5,7 +5,7 @@ import { z } from "zod";
 import { hoursOutsideOpening, type OpeningRange, weekSchemaFor } from "@/lib/hours";
 import { err, ok, type Result } from "@/lib/result";
 import { timeOffSchemaFor, type TimeOffValues } from "@/lib/time-off";
-import { cancelBooking } from "@/server/booking/service";
+import { cancelBookingsForTeam } from "@/server/booking/service";
 import { pgError } from "@/server/db/errors";
 import {
   type BookingDuringTimeOff,
@@ -138,24 +138,18 @@ async function saveMindingBookings(
   };
   if (choice.data !== "cancel") return ok(outcome);
 
-  for (const booking of overlapping) {
-    const result = await cancelBooking(
-      { kind: "member", actor, bookingId: booking.id },
-      { reason: values.reason ? `Time off: ${values.reason}` : "Time off" },
-      {
-        notify: true,
-        // The time-off reason is for the team only; customers get this.
-        customerMessage: `${person.name} isn't available at that time any more. Book another time, or reply to this email to ask us.`,
-      },
-    );
-    if (!result.ok) {
-      outcome.notCancelled++;
-      continue;
-    }
-    outcome.cancelled++;
-    if (result.data.notified) outcome.notified++;
-  }
-  return ok(outcome);
+  // One transaction for all of them; the emails go through a job (M5).
+  const result = await cancelBookingsForTeam(
+    actor,
+    overlapping.map((booking) => booking.id),
+    { reason: values.reason ? `Time off: ${values.reason}` : "Time off" },
+    {
+      // The time-off reason is for the team only; customers get this.
+      customerMessage: `${person.name} isn't available at that time any more. Sorry for the change of plans: book another time that suits you.`,
+    },
+  );
+  if (!result.ok) return ok({ ...outcome, notCancelled: overlapping.length });
+  return ok({ ...outcome, ...result.data });
 }
 
 export async function addTimeOff(

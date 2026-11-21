@@ -14,7 +14,7 @@ import { bookingHref } from "@/lib/booking-page";
 import { googleCalendarUrl } from "@/lib/calendar";
 import { formatPrice } from "@/lib/money";
 import { loadConfirmation } from "@/server/booking/confirmation";
-import { emailConfigured } from "@/server/email/send";
+import { emailConfigured } from "@/server/email/config";
 
 /*
  * After Confirm (docs/design/booking-flow/5-confirmed): the booking, its code

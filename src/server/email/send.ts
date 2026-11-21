@@ -16,9 +16,6 @@ let client: Resend | null = null;
  * "Lumen Studio <bookings@slotwren.com>": EMAIL_FROM's address under the
  * business's name, stripped of anything that could break the header.
  */
-/** Whether emails really go out (otherwise sendEmail only logs them). */
-export const emailConfigured = () => Boolean(env.RESEND_API_KEY);
-
 export function fromAddress(name?: string): string {
   if (!name) return env.EMAIL_FROM;
   const address = /<([^>]+)>/.exec(env.EMAIL_FROM)?.[1] ?? env.EMAIL_FROM;

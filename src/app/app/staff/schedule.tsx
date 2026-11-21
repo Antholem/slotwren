@@ -655,10 +655,10 @@ function cancellationSummary(outcome: {
     const what = `Cancelled ${plural(outcome.cancelled, "booking")}`;
     parts.push(
       outcome.notified === outcome.cancelled
-        ? `${what} and emailed the customers.`
+        ? `${what}. The customers are being emailed.`
         : outcome.notified === 0
           ? `${what}. Email isn't set up yet, so let the customers know yourself.`
-          : `${what} and emailed ${outcome.notified} of the customers. Let the rest know yourself.`,
+          : `${what}. ${outcome.notified} of the customers were emailed; let the rest know yourself.`,
     );
   }
   if (outcome.notCancelled > 0) {

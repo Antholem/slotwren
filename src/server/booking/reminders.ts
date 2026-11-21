@@ -45,9 +45,12 @@ export function reminderEvent(s: Plannable, now: Date, clear = false) {
 export const scheduleReminder = (s: Plannable, now = new Date()) =>
   sendJobEvents([reminderEvent(s, now)]);
 
+/** After bookings are cancelled: any planned reminders are dropped (one request). */
+export const clearReminders = (bookings: Plannable[], now = new Date()) =>
+  sendJobEvents(bookings.map((s) => reminderEvent(s, now, true)));
+
 /** After a booking is cancelled: any planned reminder is dropped. */
-export const clearReminder = (s: Plannable, now = new Date()) =>
-  sendJobEvents([reminderEvent(s, now, true)]);
+export const clearReminder = (s: Plannable, now = new Date()) => clearReminders([s], now);
 
 export type ReminderOutcome =
   | { sent: true; delivered: boolean }

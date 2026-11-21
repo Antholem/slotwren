@@ -34,6 +34,21 @@ export const reminderEventSchema = z.object({
 });
 export type ReminderEventData = z.infer<typeof reminderEventSchema>;
 
+/** The team cancelled several bookings at once (time off): email each customer. */
+export const CANCELLATION_EMAILS_EVENT = "booking/cancellation.emails" as const;
+
+export const cancellationEmailsSchema = z.object({
+  businessId: z.uuid(),
+  bookingIds: z.array(z.uuid()).min(1),
+  /** What the customers are told; the team's reason stays with the team. */
+  message: z.string().nullable(),
+});
+export type CancellationEmailsData = z.infer<typeof cancellationEmailsSchema>;
+
+export type JobEvent =
+  | { name: typeof REMINDER_EVENT; data: ReminderEventData }
+  | { name: typeof CANCELLATION_EMAILS_EVENT; data: CancellationEmailsData };
+
 const configured = () =>
   env.NODE_ENV !== "test" && (Boolean(env.INNGEST_EVENT_KEY) || env.INNGEST_DEV === "1");
 
@@ -41,9 +56,8 @@ const configured = () =>
  * Send events to Inngest. Like email, never fails the caller: without keys
  * (or in tests) it skips, and errors are logged and reported as false.
  */
-export async function sendJobEvents(
-  events: { name: typeof REMINDER_EVENT; data: ReminderEventData }[],
-): Promise<boolean> {
+export async function sendJobEvents(events: JobEvent[]): Promise<boolean> {
+  if (events.length === 0) return true;
   if (!configured()) {
     if (env.NODE_ENV === "development") {
       console.info(`[jobs] Inngest not configured; not sending ${events.map((e) => e.name)}.`);
