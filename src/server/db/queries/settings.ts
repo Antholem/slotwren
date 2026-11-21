@@ -21,6 +21,9 @@ export type BusinessSettingsRow = {
   currency: string;
   brandColor: string;
   logoUrl: string | null;
+  contactEmail: string | null;
+  phone: string | null;
+  address: string | null;
   openingHours: OpeningRange[] | null;
   minNoticeMin: number;
   maxDaysAhead: number;
@@ -36,6 +39,9 @@ const settingsColumns = {
   currency: businesses.currency,
   brandColor: businesses.brandColor,
   logoUrl: businesses.logoUrl,
+  contactEmail: businesses.contactEmail,
+  phone: businesses.phone,
+  address: businesses.address,
   openingHours: sql<OpeningRange[] | null>`${businesses.settings} -> 'openingHours'`,
   minNoticeMin: businesses.minNoticeMin,
   maxDaysAhead: businesses.maxDaysAhead,

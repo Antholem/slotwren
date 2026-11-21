@@ -61,6 +61,7 @@ export type BookingSummary = {
   endsAt: Date;
   customerTimezone: string | null;
   serviceName: string;
+  staffId: string;
   staffName: string;
   customerName: string;
   customerEmail: string;
@@ -95,6 +96,8 @@ export type BookingInsert = {
   source: "page" | "widget" | "ai" | "manual";
   priceCents: number;
   code: string;
+  customerName: string;
+  customerPhone: string | null;
   customerNotes: string | null;
   customerTimezone: string | null;
   createdByUserId: string | null;
@@ -237,26 +240,47 @@ export function bookingStore(tx: Transaction, businessId: string) {
     },
 
     /**
-     * The customer with this email (case-insensitive), created if new. An
-     * existing customer keeps their name and notes: someone typing a known
-     * email on the public page can't rename them. A missing phone is filled.
+     * The customer with this email (case-insensitive), created if new.
+     *
+     * From the public page (`updateExisting: false`) an existing customer is
+     * used exactly as the business has them: anyone can type any email, so a
+     * booking must never rename, re-phone or re-zone someone. What was typed is
+     * kept on the booking instead. The team (`updateExisting: true`) may fill a
+     * missing phone and update the last-seen timezone.
      */
-    async upsertCustomer(values: {
-      name: string;
-      email: string;
-      phone: string | null;
-      timezone: string | null;
-    }): Promise<string> {
-      const rows = await tx.execute<{ id: string }>(sql`
+    async upsertCustomer(
+      values: { name: string; email: string; phone: string | null; timezone: string | null },
+      { updateExisting }: { updateExisting: boolean },
+    ): Promise<string> {
+      if (updateExisting) {
+        const rows = await tx.execute<{ id: string }>(sql`
+          insert into ${customers} (business_id, name, email, phone, timezone)
+          values (${businessId}, ${values.name}, ${values.email}, ${values.phone}, ${values.timezone})
+          on conflict (business_id, lower(email)) do update
+            set timezone = coalesce(excluded.timezone, ${customers.timezone}),
+                phone = coalesce(${customers.phone}, excluded.phone),
+                updated_at = now()
+          returning id
+        `);
+        return rows[0]!.id;
+      }
+      const inserted = await tx.execute<{ id: string }>(sql`
         insert into ${customers} (business_id, name, email, phone, timezone)
         values (${businessId}, ${values.name}, ${values.email}, ${values.phone}, ${values.timezone})
-        on conflict (business_id, lower(email)) do update
-          set timezone = coalesce(excluded.timezone, ${customers.timezone}),
-              phone = coalesce(${customers.phone}, excluded.phone),
-              updated_at = now()
+        on conflict (business_id, lower(email)) do nothing
         returning id
       `);
-      return rows[0]!.id;
+      if (inserted[0]) return inserted[0].id;
+      const [existing] = await tx
+        .select({ id: customers.id })
+        .from(customers)
+        .where(
+          and(
+            eq(customers.businessId, businessId),
+            sql`lower(${customers.email}) = lower(${values.email})`,
+          ),
+        );
+      return existing!.id;
     },
 
     async insertBooking(values: BookingInsert): Promise<string> {
@@ -383,8 +407,10 @@ export function bookingStore(tx: Transaction, businessId: string) {
           endsAt: bookings.endsAt,
           customerTimezone: bookings.customerTimezone,
           serviceName: services.name,
+          staffId: bookings.staffId,
           staffName: staff.name,
-          customerName: customers.name,
+          // What the customer typed on this booking, not the business's record.
+          customerName: bookings.customerName,
           customerEmail: customers.email,
           businessName: businesses.name,
           businessSlug: businesses.slug,
@@ -393,7 +419,7 @@ export function bookingStore(tx: Transaction, businessId: string) {
           source: bookings.source,
           priceCents: bookings.priceCents,
           durationMin: services.durationMin,
-          customerPhone: customers.phone,
+          customerPhone: bookings.customerPhone,
           customerNotes: bookings.customerNotes,
           createdAt: bookings.createdAt,
           businessBrandColor: businesses.brandColor,

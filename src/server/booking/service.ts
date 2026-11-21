@@ -232,10 +232,11 @@ export async function createBooking(
     });
     if (!slot) throw new Rollback(err("slot_unavailable", BOOKING_MESSAGES.unavailable));
 
-    const customerId = await store.upsertCustomer({
-      ...values.customer,
-      timezone: values.customerTimezone,
-    });
+    const customerId = await store.upsertCustomer(
+      { ...values.customer, timezone: values.customerTimezone },
+      // The public page never changes an existing customer (see the store).
+      { updateExisting: member },
+    );
     const manageToken = generateToken();
     const code = generateBookingCode();
     const source = channel.kind === "public" ? channel.source : "manual";
@@ -249,6 +250,9 @@ export async function createBooking(
       source,
       priceCents: context.service.priceCents,
       code,
+      // As typed: the manage page and emails show these, not the stored customer.
+      customerName: values.customer.name,
+      customerPhone: values.customer.phone,
       customerNotes: values.notes,
       customerTimezone: values.customerTimezone,
       createdByUserId: channel.kind === "member" ? channel.actor.claims.sub : null,
@@ -416,6 +420,7 @@ export async function rescheduleBooking(
           manageToken,
         },
         previousStart: booking.startsAt,
+        previousStaffId: booking.staffId,
         summary: await store.summary(booking.id),
       };
     });
@@ -425,6 +430,7 @@ export async function rescheduleBooking(
         result.summary,
         {
           previousStart: result.previousStart,
+          previousStaffId: result.previousStaffId,
           manageToken: result.moved.manageToken,
           byCustomer: opened.byCustomer,
         },

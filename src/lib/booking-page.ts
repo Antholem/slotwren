@@ -281,3 +281,20 @@ export function fromNow(instant: Date, now: Date): string {
   if (hours < 48) return `about ${hours} h from now`;
   return `about ${Math.round(hours / 24)} days from now`;
 }
+
+/**
+ * The last date, on the customer's clock, that can hold a bookable time. The
+ * business takes bookings up to `maxDaysAhead` days after its own today
+ * (server/booking/slots.ts), so a customer ahead of or behind it may see that
+ * last day end a calendar day later or earlier.
+ */
+export function lastBookableDate(
+  now: Date,
+  business: { timezone: string; maxDaysAhead: number },
+  customerZone: string,
+): string {
+  const clock = zoneClock(business.timezone);
+  const lastDate = nextDate(clock.parts(now.getTime()).date, business.maxDaysAhead);
+  const lastInstant = clock.instant(nextDate(lastDate, 1), "00:00") - 1;
+  return zoneClock(customerZone).parts(lastInstant).date;
+}

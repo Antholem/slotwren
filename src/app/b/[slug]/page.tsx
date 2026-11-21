@@ -6,6 +6,7 @@ import { Suspense } from "react";
 import { BookingTopBar, BusinessIntro, PoweredBy } from "@/components/booking/booking-layout";
 import { DetailsStep } from "@/components/booking/details-step";
 import { ServiceStep } from "@/components/booking/service-step";
+import { StepHeading } from "@/components/booking/step-heading";
 import { StaffStep } from "@/components/booking/staff-step";
 import { TimeStep } from "@/components/booking/time-step";
 import { brandThemeCss } from "@/lib/brand-theme";
@@ -165,7 +166,9 @@ async function Booking({ params, searchParams }: PageProps<"/b/[slug]">) {
     <div className="booking-theme flex flex-1 flex-col bg-background pb-20 lg:pb-0">
       {/* Brand colours as primary tokens; every value is a #RRGGBB we built. */}
       {css && <style>{css}</style>}
-      <h1 className="sr-only">Book with {business.name}</h1>
+      <StepHeading>{`${STEP_HEADINGS[state.step]} · Book with ${business.name}`}</StepHeading>
+      {/* Keep focused fields clear of the fixed Continue bar on phones (WCAG 2.4.11). */}
+      <style>{"@media (width < 64rem) { html { scroll-padding-bottom: 6rem; } }"}</style>
       <BookingTopBar
         business={business}
         step={state.step}
@@ -183,6 +186,13 @@ async function Booking({ params, searchParams }: PageProps<"/b/[slug]">) {
     </div>
   );
 }
+
+const STEP_HEADINGS: Record<BookingState["step"], string> = {
+  service: "Choose a service",
+  staff: "Choose who you'd like",
+  time: "Pick a date and time",
+  details: "Your details",
+};
 
 function BookingSkeleton() {
   return (

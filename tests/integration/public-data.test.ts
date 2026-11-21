@@ -11,6 +11,7 @@ import { getBusinessContact, getManagedBooking } from "@/server/db/queries/publi
 import { getInvitePreview, getInviteRecipient } from "@/server/db/queries/public/invites";
 import * as schema from "@/server/db/schema";
 
+import { testUsers } from "../support/auth";
 import { bookingValues, connectTestDb, createFixtureBusiness } from "../support/db";
 
 /*
@@ -146,10 +147,12 @@ describe("public data", () => {
   });
 
   describe("the booking page", () => {
-    // Mia does the haircut. Jonah left (inactive), Kai does nothing yet, one
-    // service is archived and another only Jonah did: none of those show.
+    // Mia does the haircut. Jonah left (inactive), Kai does nothing yet, Noor
+    // has no working hours, one service is archived and another only Jonah
+    // did: none of those show.
     let jonahId: string;
     let kaiId: string;
+    let noorId: string;
     let retiredId: string;
     let unstaffedId: string;
 
@@ -167,15 +170,17 @@ describe("public data", () => {
           },
         })
         .where(eq(schema.businesses.id, businessId));
-      const [jonah, kai] = await db
+      const [jonah, kai, noor] = await db
         .insert(schema.staff)
         .values([
           { businessId, name: "Jonah", color: "violet", active: false },
           { businessId, name: "Kai", color: "pink" },
+          { businessId, name: "Noor", color: "teal" },
         ])
         .returning({ id: schema.staff.id });
       jonahId = jonah!.id;
       kaiId = kai!.id;
+      noorId = noor!.id;
       const [retired, unstaffed] = await db
         .insert(schema.services)
         .values([
@@ -188,6 +193,7 @@ describe("public data", () => {
       await db.insert(schema.staffServices).values([
         { businessId, staffId: fixture.staff.id, serviceId: fixture.service.id },
         { businessId, staffId: jonahId, serviceId: fixture.service.id },
+        { businessId, staffId: noorId, serviceId: fixture.service.id },
         { businessId, staffId: jonahId, serviceId: unstaffedId },
         { businessId, staffId: fixture.staff.id, serviceId: retiredId },
       ]);
@@ -237,6 +243,7 @@ describe("public data", () => {
         "ownerNewBookingEmail",
         kaiId, // does nothing bookable
         jonahId, // inactive
+        noorId, // no working hours, so no times
         retiredId, // archived
         unstaffedId, // only an inactive person does it
       ]) {
@@ -404,6 +411,43 @@ describe("public data", () => {
         businessPhone: "+63 2 8000 0000",
         businessEmail: "frontdesk@example.com",
       });
+    });
+
+    it("falls back to the first owner's sign-in email, never a staff member's", async () => {
+      const users = testUsers();
+      const businessId = fixture.business.id;
+      const [first, second, staffer] = [
+        await users.create("contact-owner-1"),
+        await users.create("contact-owner-2"),
+        await users.create("contact-staff"),
+      ];
+      const earlier = new Date(Date.now() - 60_000);
+      await db.insert(schema.memberships).values([
+        {
+          businessId,
+          userId: staffer.sub,
+          role: "staff",
+          createdAt: new Date(Date.now() - 120_000),
+        },
+        { businessId, userId: second.sub, role: "owner" },
+        { businessId, userId: first.sub, role: "owner", createdAt: earlier },
+      ]);
+      await db
+        .update(schema.businesses)
+        .set({ contactEmail: null })
+        .where(eq(schema.businesses.id, businessId));
+      try {
+        expect(await getBusinessContact({ businessId })).toEqual({
+          businessPhone: "+63 2 8000 0000",
+          businessEmail: first.email,
+        });
+      } finally {
+        await db
+          .update(schema.businesses)
+          .set({ contactEmail: "frontdesk@example.com" })
+          .where(eq(schema.businesses.id, businessId));
+        await users.cleanup();
+      }
     });
 
     it("lets a booking being moved see its own time as free", async () => {

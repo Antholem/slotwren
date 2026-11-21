@@ -64,7 +64,9 @@ export function BookingReminderEmail(props: BookingReminderEmailProps) {
         </BrandLink>
       </Text>
       <Notice>{props.policy}</Notice>
-      <Body2>Running late? Reply to this email and {business.name} will see it.</Body2>
+      {props.canReply && (
+        <Body2>Running late? Reply to this email and {business.name} will see it.</Body2>
+      )}
     </EmailShell>
   );
 }

@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, asc, eq, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, exists, isNull, sql } from "drizzle-orm";
 import { cache } from "react";
 
 import type {
@@ -11,7 +11,14 @@ import type {
 } from "@/lib/booking-page";
 
 import { adminQuery, type TenantScoped } from "../../admin";
-import { bookings, businesses, services, staff, staffServices } from "../../schema";
+import {
+  availabilityRules,
+  bookings,
+  businesses,
+  services,
+  staff,
+  staffServices,
+} from "../../schema";
 
 /*
  * What the public booking page (/b/[slug]) reads, by the business ID its slug
@@ -68,7 +75,24 @@ const loadBookingPage = adminQuery(
       db
         .select({ id: staff.id, name: staff.name, title: staff.title, color: staff.color })
         .from(staff)
-        .where(and(eq(staff.businessId, businessId), eq(staff.active, true)))
+        .where(
+          and(
+            eq(staff.businessId, businessId),
+            eq(staff.active, true),
+            // Someone with no working hours has no times: don't offer them (L6).
+            exists(
+              db
+                .select({ one: sql`1` })
+                .from(availabilityRules)
+                .where(
+                  and(
+                    eq(availabilityRules.businessId, businessId),
+                    eq(availabilityRules.staffId, staff.id),
+                  ),
+                ),
+            ),
+          ),
+        )
         .orderBy(asc(staff.sortOrder), asc(staff.createdAt)),
       db
         .select({ staffId: staffServices.staffId, serviceId: staffServices.serviceId })

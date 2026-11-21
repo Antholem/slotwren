@@ -15,8 +15,8 @@ import {
 } from "./components/email-shell";
 
 export type BookingRescheduledEmailProps = BookingEmailData & {
-  /** "Tue 27 Oct, 14:30" */
-  previous: string;
+  /** "Tue 27 Oct, 14:30"; null when only the staff member changed. */
+  previous: string | null;
   /** A fresh manage link (every reschedule email carries one). */
   manageUrl: string;
   googleUrl: string;
@@ -31,17 +31,35 @@ export function BookingRescheduledEmail(props: BookingRescheduledEmailProps) {
   return (
     <EmailShell
       business={business}
-      preview={`Now ${props.date}, ${props.range} with ${props.staffName} (was ${props.previous}).`}
+      preview={
+        props.previous
+          ? `Now ${props.date}, ${props.range} with ${props.staffName} (was ${props.previous}).`
+          : `Same time, now with ${props.staffName}: ${props.date}, ${props.range}.`
+      }
       footerNote="You're getting this because your booking changed."
     >
-      <Badge brandColor={business.brandColor}>Rescheduled</Badge>
-      <Title>Your booking has moved, {firstName(props.customerName)}</Title>
-      <Lead>
-        {props.movedByBusiness
-          ? `${business.name} moved your appointment. Here's the new time.`
-          : "Done. Here's your new time."}{" "}
-        It was {props.previous}.
-      </Lead>
+      <Badge brandColor={business.brandColor}>{props.previous ? "Rescheduled" : "Updated"}</Badge>
+      {props.previous ? (
+        <>
+          <Title>Your booking has moved, {firstName(props.customerName)}</Title>
+          <Lead>
+            {props.movedByBusiness
+              ? `${business.name} moved your appointment. Here's the new time.`
+              : "Done. Here's your new time."}{" "}
+            It was {props.previous}.
+          </Lead>
+        </>
+      ) : (
+        <>
+          <Title>You&rsquo;re now with {props.staffName}</Title>
+          <Lead>
+            {props.movedByBusiness
+              ? `${business.name} changed who you're seeing, ${firstName(props.customerName)}.`
+              : "Done."}{" "}
+            Your time hasn&rsquo;t changed.
+          </Lead>
+        </>
+      )}
       <AppointmentCard
         date={props.date}
         range={props.range}
@@ -58,7 +76,9 @@ export function BookingRescheduledEmail(props: BookingRescheduledEmailProps) {
       </Text>
       <CalendarLinks googleUrl={props.googleUrl} icsUrl={props.icsUrl} />
       <Notice>{props.policy}</Notice>
-      <Body2>Questions? Reply to this email and {business.name} will get back to you.</Body2>
+      {props.canReply && (
+        <Body2>Questions? Reply to this email and {business.name} will get back to you.</Body2>
+      )}
     </EmailShell>
   );
 }

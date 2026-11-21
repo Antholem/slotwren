@@ -38,7 +38,9 @@ test("a customer books with the keyboard and sees the confirmation", async ({ pa
   // Step 1: service
   await page.goto(`/b/${slug}`);
   await expect(page).toHaveTitle(`${name} · Book online`);
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText(`Book with ${name}`);
+  const heading = page.getByRole("heading", { level: 1 });
+  await expect(heading).toHaveText(`Choose a service · Book with ${name}`);
+  await expect(heading).not.toBeFocused(); // landing leaves focus alone
   await expectNoAxeViolations(page);
   const haircut = page.getByRole("radio", { name: /Haircut/ });
   await haircut.focus();
@@ -48,8 +50,11 @@ test("a customer books with the keyboard and sees the confirmation", async ({ pa
   await expect(visibleButton(page, "Continue")).toHaveCSS("background-color", "rgb(190, 18, 60)");
   await pressContinue(page);
 
-  // Step 2: Anyone available is the default
+  // Step 2: Anyone available is the default. The new step's heading takes
+  // focus, so a screen reader announces it.
   await expect(page).toHaveURL(/step=staff/);
+  await expect(heading).toHaveText(`Choose who you'd like · Book with ${name}`);
+  await expect(heading).toBeFocused();
   await expect(page.getByRole("radio", { name: /Anyone available/ })).toBeChecked();
   await expect(page.locator("label").filter({ hasText: "Mia" })).toContainText(/Next free/);
   await expectNoAxeViolations(page);
@@ -57,6 +62,7 @@ test("a customer books with the keyboard and sees the confirmation", async ({ pa
 
   // Step 3: arrow keys move through the times
   await expect(page).toHaveURL(/step=time/);
+  await expect(heading).toBeFocused();
   await expect(page.getByText("Times shown in your timezone (GMT+8)")).toBeVisible();
   const chips = timeChips(page);
   await expect(chips.first()).toBeAttached();
@@ -124,6 +130,10 @@ test("a customer books with the keyboard and sees the confirmation", async ({ pa
   );
   expect(ics.headers()["content-type"]).toContain("text/calendar");
   expect(await ics.text()).toContain(`Booking code ${booking!.code}`);
+
+  // Back skips the filled-in form: the confirmation replaced it.
+  await page.goBack();
+  await expect(page).toHaveURL(/step=time/);
   expect(errors).toEqual([]);
 });
 

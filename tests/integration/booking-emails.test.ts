@@ -132,6 +132,51 @@ describe("booking emails", () => {
     });
     expect(ownerMail!.replyTo).toMatch(/^rosa-/);
     expect(ownerMail!.html).toContain("via booking page");
+    expect(customer!.html).toContain("Reply to this email");
+  });
+
+  it("shows the name the customer typed, not the business's record for that email", async () => {
+    await book(at("10:00"), {
+      customer: { name: "Mallory Fox", email: a.customer.email },
+    });
+    const [customer, ownerMail] = mail.sent;
+    expect(customer!.html).toContain("You’re booked, Mallory");
+    expect(customer!.html).not.toContain("Ana");
+    expect(ownerMail!.subject).toContain("Mallory Fox");
+  });
+
+  describe("replies", () => {
+    const setContact = (contactEmail: string | null) =>
+      db
+        .update(schema.businesses)
+        .set({ contactEmail })
+        .where(eq(schema.businesses.id, a.business.id));
+    afterAll(() => setContact("hello@lumen.example"));
+
+    it("go to the owners' sign-in addresses when there's no contact email", async () => {
+      await setContact(null);
+      await booked(at("10:00"));
+      expect(mail.sent[0]!.replyTo).toEqual([owner.email]);
+      expect(mail.sent[0]!.html).toContain("Reply to this email");
+    });
+
+    it("aren't invited when nobody would read them", async () => {
+      await setContact(null);
+      await db
+        .update(schema.memberships)
+        .set({ role: "staff" })
+        .where(eq(schema.memberships.businessId, a.business.id));
+      try {
+        await booked(at("10:00"));
+      } finally {
+        await db
+          .update(schema.memberships)
+          .set({ role: "owner" })
+          .where(eq(schema.memberships.businessId, a.business.id));
+      }
+      expect(mail.sent[0]!.replyTo).toBeNull();
+      expect(mail.sent[0]!.html).not.toContain("Reply to this email");
+    });
   });
 
   it("doesn't tell the owner about bookings they made, or when they've turned it off", async () => {
@@ -237,6 +282,42 @@ describe("booking emails", () => {
         { now: NOW },
       );
       expect(stillWorks.ok).toBe(true);
+    });
+
+    it("to someone else at the same time: says who, not that the time moved", async () => {
+      const businessId = a.business.id;
+      const [jonah] = await db
+        .insert(schema.staff)
+        .values({ businessId, name: "Jonah Lim", color: "violet" })
+        .returning();
+      await db
+        .insert(schema.staffServices)
+        .values({ businessId, staffId: jonah!.id, serviceId: a.service.id });
+      await db.insert(schema.availabilityRules).values({
+        businessId,
+        staffId: jonah!.id,
+        weekday: 2,
+        startTime: "09:00",
+        endTime: "17:00",
+      });
+      try {
+        const created = await booked(at("10:00"));
+        mail.sent.length = 0;
+        const moved = await rescheduleBooking(
+          { kind: "member", actor: owner, bookingId: created.id },
+          { startsAt: at("10:00").toISOString(), staffId: jonah!.id },
+          { now: NOW },
+        );
+        expect(moved.ok).toBe(true);
+        const [email] = mail.sent;
+        expect(email!.subject).toBe("Changed: Haircut, Tue 1 Dec at 02:00, now with Jonah Lim");
+        expect(email!.html).toContain("You’re now with Jonah Lim");
+        expect(email!.html).toContain("Your time hasn’t changed.");
+        expect(email!.html).not.toContain("It was");
+      } finally {
+        await db.delete(schema.bookings).where(eq(schema.bookings.businessId, businessId));
+        await db.delete(schema.staff).where(eq(schema.staff.id, jonah!.id));
+      }
     });
   });
 

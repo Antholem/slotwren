@@ -1,9 +1,9 @@
 "use client";
 
 import { Clock } from "lucide-react";
-import { useRouter } from "next/navigation";
 import { useState } from "react";
 
+import { useStepNavigation } from "@/hooks/use-step-navigation";
 import { type BookingState, bookingHref, type PublicService } from "@/lib/booking-page";
 import { formatPrice } from "@/lib/money";
 
@@ -22,7 +22,7 @@ export function ServiceStep({
   currency: string;
   state: BookingState;
 }) {
-  const router = useRouter();
+  const navigation = useStepNavigation();
   const [selectedId, setSelectedId] = useState(state.serviceId);
   const selected = services.find((s) => s.id === selectedId) ?? null;
   const price = (s: PublicService) => formatPrice(s.priceCents, currency);
@@ -30,11 +30,12 @@ export function ServiceStep({
   const action = {
     label: "Continue",
     disabled: !selected,
+    pending: navigation.pending,
     onClick: () => {
       if (!selected) return;
       // A different service may have different people and times: start those over.
       const same = selected.id === state.serviceId;
-      router.push(
+      navigation.push(
         bookingHref(slug, {
           step: "staff",
           serviceId: selected.id,

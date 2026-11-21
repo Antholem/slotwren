@@ -12,6 +12,8 @@ import {
 } from "@/server/booking/service";
 import { hashToken } from "@/server/booking/tokens";
 import type { Actor } from "@/server/catalog/services";
+import { getBookingConfirmation } from "@/server/db/queries/public/booking-page";
+import { getManagedBooking } from "@/server/db/queries/public/manage";
 import * as schema from "@/server/db/schema";
 
 import { testUsers } from "../support/auth";
@@ -275,6 +277,46 @@ describe("booking service", () => {
           ),
         );
       expect(matches).toEqual([{ name: "Ana Santos" }]);
+    });
+
+    it("booking with someone else's email reveals nothing about them and changes nothing", async () => {
+      // Ana's record, as the business keeps it.
+      await db
+        .update(schema.customers)
+        .set({ phone: "+63 917 555 0101", timezone: MANILA })
+        .where(eq(schema.customers.id, a.customer.id));
+      const before = (
+        await db.select().from(schema.customers).where(eq(schema.customers.id, a.customer.id))
+      )[0]!;
+
+      // Someone who knows (or guesses) Ana's email books with their own details.
+      const created = await booked(at("10:00"), {
+        customer: { name: "Mallory Fox", email: a.customer.email, phone: "+44 7700 900123" },
+        customerTimezone: "Europe/London",
+      });
+
+      // The business still links it to Ana, but her record is untouched...
+      const saved = await row(created.id);
+      expect(saved).toMatchObject({
+        customerId: a.customer.id,
+        customerName: "Mallory Fox",
+        customerPhone: "+44 7700 900123",
+        customerTimezone: "Europe/London",
+      });
+      const after = (
+        await db.select().from(schema.customers).where(eq(schema.customers.id, a.customer.id))
+      )[0]!;
+      expect(after).toEqual(before);
+
+      // ...and nothing the booker can see mentions her name or phone.
+      const seen = JSON.stringify([
+        created,
+        await getManagedBooking({ tokenHash: hashToken(created.manageToken), now: NOW }),
+        await getBookingConfirmation({ businessId: a.business.id, bookingId: created.id }),
+      ]);
+      expect(seen).toContain("Mallory Fox");
+      expect(seen).not.toContain("Ana");
+      expect(seen).not.toContain("555 0101");
     });
 
     it("creates a new customer for a new email", async () => {

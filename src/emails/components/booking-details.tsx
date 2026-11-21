@@ -17,6 +17,8 @@ export type BookingEmailData = {
   /** "Times in GMT+8 (Asia/Manila)", when that isn't obvious. */
   zoneNote: string | null;
   mapsUrl: string | null;
+  /** Replies reach the business (a contact email, or its owners'). */
+  canReply: boolean;
 };
 
 export const firstName = (name: string) => name.trim().split(/\s+/)[0] ?? name;

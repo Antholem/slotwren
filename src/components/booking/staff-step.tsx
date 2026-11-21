@@ -1,9 +1,9 @@
 "use client";
 
 import { Users } from "lucide-react";
-import { useRouter } from "next/navigation";
 import { useState } from "react";
 
+import { useStepNavigation } from "@/hooks/use-step-navigation";
 import { useCustomerTimeZone } from "@/hooks/use-customer-time-zone";
 import { formatInZone } from "@/lib/dates";
 import {
@@ -44,7 +44,7 @@ export function StaffStep({
   now: string;
   state: BookingState;
 }) {
-  const router = useRouter();
+  const navigation = useStepNavigation();
   const zone = useCustomerTimeZone();
   const [selectedId, setSelectedId] = useState(state.staffId);
   const chosen = staff.find((p) => p.id === selectedId);
@@ -66,8 +66,9 @@ export function StaffStep({
 
   const action = {
     label: "Continue",
+    pending: navigation.pending,
     onClick: () =>
-      router.push(
+      navigation.push(
         bookingHref(slug, {
           step: "time",
           serviceId: service.id,

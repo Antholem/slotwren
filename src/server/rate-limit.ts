@@ -20,8 +20,9 @@ export const LIMITS = {
   // Flicking through a few weeks of times is ~10 lookups; 60 a minute is generous.
   "slots:ip": { limit: 60, windowSec: 60 },
   "slots:business": { limit: 600, windowSec: 60 },
-  // A real customer books once, maybe twice after a "just taken".
-  "book:ip": { limit: 5, windowSec: 600 },
+  // A real customer books once, maybe twice after a "just taken"; 15 leaves
+  // room for a family, or a café sharing one IP.
+  "book:ip": { limit: 15, windowSec: 600 },
   "book:business": { limit: 60, windowSec: 600 },
 } as const;
 

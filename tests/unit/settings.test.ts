@@ -143,6 +143,9 @@ describe("businessSettingsSchema", () => {
     currency: "USD",
     brandColor: "#0f766e",
     logoUrl: null,
+    contactEmail: "",
+    phone: "",
+    address: "",
     openingHours: defaultWeek(),
     rules,
     roundStaffHours: false,
@@ -159,6 +162,27 @@ describe("businessSettingsSchema", () => {
   it("accepts a whole Business tab", () => {
     const result = businessSettingsSchema.parse(valid);
     expect(result.brandColor).toBe("#0F766E");
+    // Blank contact details are cleared, not saved as "".
+    expect(result).toMatchObject({ contactEmail: null, phone: null, address: null });
+    // The server action parses the parsed form again: that has to pass too.
+    expect(businessSettingsSchema.parse(result)).toEqual(result);
+  });
+
+  it("checks the contact details, trimmed", () => {
+    const parse = (contact: Record<string, string>) =>
+      businessSettingsSchema.safeParse({ ...valid, ...contact });
+    expect(parse({ contactEmail: " hello@lumen.example " }).data?.contactEmail).toBe(
+      "hello@lumen.example",
+    );
+    for (const phone of ["+63 917 123 4567", "(02) 8000-0000", "555.0100.22"]) {
+      expect(parse({ phone }).success, phone).toBe(true);
+    }
+    const message = (contact: Record<string, string>) => parse(contact).error?.issues[0]?.message;
+    expect(message({ contactEmail: "front desk" })).toBe("Enter a valid email address.");
+    for (const phone of ["call me", "+63", "1234", "12-34"]) {
+      expect(message({ phone }), phone).toBe("Enter a phone number, like +63 917 123 4567.");
+    }
+    expect(message({ address: "x".repeat(201) })).toBe("Keep the address under 200 characters.");
   });
 
   it("checks name, slug, timezone and currency", () => {

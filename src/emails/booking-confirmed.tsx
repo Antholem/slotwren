@@ -52,7 +52,9 @@ export function BookingConfirmedEmail(props: BookingConfirmedEmailProps) {
       </Text>
       <CalendarLinks googleUrl={props.googleUrl} icsUrl={props.icsUrl} />
       <Notice>{props.policy}</Notice>
-      <Body2>Questions? Reply to this email and {business.name} will get back to you.</Body2>
+      {props.canReply && (
+        <Body2>Questions? Reply to this email and {business.name} will get back to you.</Body2>
+      )}
     </EmailShell>
   );
 }

@@ -42,6 +42,9 @@ describe("business settings", () => {
       currency: row.currency,
       brandColor: row.brandColor,
       logoUrl: row.logoUrl,
+      contactEmail: row.contactEmail ?? "",
+      phone: row.phone ?? "",
+      address: row.address ?? "",
       openingHours: defaultWeek(),
       rules: {
         minNoticeMin: row.minNoticeMin,
@@ -114,6 +117,46 @@ describe("business settings", () => {
       expect(row.settings.openingHours?.[0]).toEqual({ weekday: 1, start: "09:00", end: "17:00" });
     });
 
+    it("an owner sets and clears the contact details", async () => {
+      const form = await formFor(a.business.id);
+      const saved = await saveBusinessSettings(owner, {
+        ...form,
+        contactEmail: "  hello@lumen.example ",
+        phone: "+63 917 123 4567",
+        address: "12 Lumen Lane, Makati",
+      });
+      expect(saved.ok).toBe(true);
+      expect(await businessRow(a.business.id)).toMatchObject({
+        contactEmail: "hello@lumen.example",
+        phone: "+63 917 123 4567",
+        address: "12 Lumen Lane, Makati",
+      });
+
+      const cleared = await saveBusinessSettings(owner, {
+        ...(await formFor(a.business.id)),
+        contactEmail: "",
+        phone: "",
+        address: "",
+      });
+      expect(cleared.ok).toBe(true);
+      expect(await businessRow(a.business.id)).toMatchObject({
+        contactEmail: null,
+        phone: null,
+        address: null,
+      });
+
+      expect(
+        await saveBusinessSettings(owner, { ...form, contactEmail: "not-an-email" }),
+      ).toMatchObject({
+        ok: false,
+        error: { fieldErrors: { contactEmail: ["Enter a valid email address."] } },
+      });
+      expect(await saveBusinessSettings(owner, { ...form, phone: "call me" })).toMatchObject({
+        ok: false,
+        error: { fieldErrors: { phone: ["Enter a phone number, like +63 917 123 4567."] } },
+      });
+    });
+
     it("keeps other settings when saving opening hours", async () => {
       await db
         .update(schema.businesses)
@@ -149,6 +192,9 @@ describe("business settings", () => {
           currency: row.currency,
           brandColor: row.brandColor,
           logoUrl: row.logoUrl,
+          contactEmail: null,
+          phone: null,
+          address: null,
           openingHours: [],
           minNoticeMin: 0,
           maxDaysAhead: 1,
