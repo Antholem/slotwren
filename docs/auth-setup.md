@@ -17,8 +17,10 @@ How the pieces fit:
 
 ## Before production
 
-Do these once against the hosted Supabase project before launch, and redo step 2 whenever
-`supabase/migrations/` changes.
+Do these once against the hosted Supabase project before launch. After that,
+`.github/workflows/migrate.yml` pushes new migrations whenever CI passes on main (secret
+`SUPABASE_DB_URL`), and `keep-alive.yml` queries the database daily so the free project
+isn't paused.
 
 - [ ] **Link the CLI to the hosted project.** `pnpm exec supabase login`, then
       `pnpm exec supabase link --project-ref <project-ref>` (the ref is in the project URL;
