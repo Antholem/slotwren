@@ -17,14 +17,17 @@ How the pieces fit:
 
 ## Before production
 
-Do these once against the hosted Supabase project before launch, and redo step 2 whenever
-`supabase/migrations/` changes.
+Do these once against the hosted Supabase project before launch. After that,
+`.github/workflows/migrate.yml` pushes new migrations whenever CI passes on main (secret
+`SUPABASE_DB_URL`), and `keep-alive.yml` queries the database daily so the free project
+isn't paused.
 
 - [ ] **Link the CLI to the hosted project.** `pnpm exec supabase login`, then
       `pnpm exec supabase link --project-ref <project-ref>` (the ref is in the project URL;
       it asks for the database password).
-- [ ] **Push the migrations.** `pnpm exec supabase db push --dry-run` to list what will
-      run, then `pnpm exec supabase db push`. This creates the schema, the
+- [ ] **Push the migrations.** `pnpm exec supabase db push --linked --dry-run` to list what
+      will run, then `pnpm exec supabase db push --linked`. Always say `--linked` (newer CLIs
+      target the local database by default); CI passes `--db-url` instead. This creates the schema, the
       `no_double_booking` constraint and every RLS policy. Never run `db reset` against
       the hosted project.
 - [ ] **Site URL and redirect URLs.** Authentication → URL Configuration, as in

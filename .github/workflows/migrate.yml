@@ -1,0 +1,56 @@
+name: Migrate production
+
+# Applies new migrations in supabase/migrations to the production database
+# after CI passes on a push to main (never for pull requests). Runs in its own
+# workflow so CI's cancel-in-progress can't stop a push halfway, and one at a
+# time so two merges can't race.
+#
+# Always --db-url: the target is explicit, whatever the CLI's default target
+# (newer CLIs default to the local database).
+#
+# Secret: SUPABASE_DB_URL, the production session pooler connection string
+# (Supabase dashboard → Connect → Session pooler), password percent-encoded.
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: production-migrations
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  migrate:
+    name: supabase db push
+    # Only after a green CI run for a push to main (or by hand).
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # The commit CI tested, not whatever main is by now.
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Pending migrations
+        run: pnpm exec supabase db push --db-url "$SUPABASE_DB_URL" --dry-run
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+      - name: Apply
+        run: pnpm exec supabase db push --db-url "$SUPABASE_DB_URL"
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
