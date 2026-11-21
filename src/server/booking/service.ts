@@ -13,6 +13,7 @@ import { findBookingByManageToken, withPublicBookings } from "@/server/db/querie
 
 import { generateBookingCode } from "./codes";
 import { notifyBookingCancelled, notifyBookingCreated, notifyBookingRescheduled } from "./notify";
+import { clearReminder, scheduleReminder } from "./reminders";
 import { getAvailableSlots, type Slot } from "./slots";
 import { generateToken, hashToken } from "./tokens";
 
@@ -287,7 +288,10 @@ export async function createBooking(
           ? await withPublicBookings(channel.businessId, work)
           : await withMemberBookings(channel.actor.claims, channel.actor.businessId, work);
       // After the commit, and never able to undo it.
-      if (summary) await notifyBookingCreated(summary, created.manageToken, now);
+      if (summary) {
+        await notifyBookingCreated(summary, created.manageToken, now);
+        await scheduleReminder(summary, now);
+      }
       return ok(created);
     } catch (error) {
       if (attempt < 4 && isUniqueViolation(error, "bookings_business_code")) continue;
@@ -416,6 +420,7 @@ export async function rescheduleBooking(
       };
     });
     if (result.summary) {
+      await scheduleReminder(result.summary, now);
       await notifyBookingRescheduled(
         result.summary,
         {
@@ -476,6 +481,8 @@ export async function cancelBooking(
     return settleError(error);
   }
 
+  // Any planned reminder is dropped (the job would skip it anyway).
+  if (summary) await clearReminder(summary, now);
   const id = summary?.id ?? opened.bookingId;
   const code = summary?.code ?? "";
   // Customers always get a receipt; the team chooses whether to tell them.

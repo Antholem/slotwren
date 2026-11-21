@@ -35,6 +35,7 @@ pnpm dev                 # Next dev server (needs .env.local; see .env.example)
 pnpm db:start            # local Supabase (Docker), minus logflare/vector/edge-runtime/imgproxy/supavisor
 pnpm db:reset            # recreate local DB from supabase/migrations
 pnpm db:seed             # Lumen Studio demo data (idempotent: replaces the demo business)
+pnpm jobs:dev            # Inngest dev server on :8288 (needs INNGEST_DEV=1 and pnpm dev on :3000)
 
 pnpm check               # lint + typecheck + format:check + unit/component tests
 pnpm lint | typecheck | format | test

@@ -62,6 +62,8 @@ const serverSchema = z
     // Background jobs (the local Inngest dev server needs no keys)
     INNGEST_EVENT_KEY: featureKey(),
     INNGEST_SIGNING_KEY: featureKey(),
+    // "1" locally: talk to the Inngest dev server (pnpm jobs:dev), no keys needed.
+    INNGEST_DEV: z.enum(["0", "1"]).optional(),
 
     // Rate limiting
     UPSTASH_REDIS_REST_URL: requireFeatureKeys ? z.url() : z.url().optional(),
