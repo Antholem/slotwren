@@ -144,7 +144,18 @@ test("a time taken while the customer types sends them back with the nearest ope
   const errors = collectConsoleErrors(page);
   const fixture = await bookableBusiness();
   await toTimes(page, fixture);
-  await choose(timeChips(page).nth(1));
+  // Tomorrow (the customer's), so there are openings either side whatever the time:
+  // late in the business's day, today may have only one time left.
+  const tomorrow = await page.evaluate(() =>
+    new Intl.DateTimeFormat("en-CA", { year: "numeric", month: "2-digit", day: "2-digit" }).format(
+      Date.now() + 86_400_000,
+    ),
+  );
+  const url = new URL(page.url());
+  url.searchParams.set("date", tomorrow);
+  await page.goto(url.pathname + url.search);
+  await expect(timeChips(page).nth(3)).toBeAttached();
+  await choose(timeChips(page).nth(2));
   await pressContinue(page);
   await expect(page).toHaveURL(/step=details/);
   const start = new URL(page.url()).searchParams.get("start")!;
