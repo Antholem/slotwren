@@ -48,8 +48,12 @@ type CellState =
   | { kind: "past" }
   | { kind: "off"; why: string };
 
+/** Below this width a week's seven columns don't fit: phones open on the day. */
+const NARROW = "(max-width: 767px)";
+
 export function CalendarView({
   view,
+  viewChosen,
   dates,
   today,
   zone,
@@ -65,6 +69,8 @@ export function CalendarView({
   links,
 }: {
   view: "day" | "week";
+  /** The URL names the view; without one, narrow screens switch to day. */
+  viewChosen: boolean;
   dates: string[];
   today: string;
   zone: string;
@@ -89,6 +95,15 @@ export function CalendarView({
     start: { date: today },
   });
   const [drawer, setDrawer] = useState<string | null>(null);
+
+  // The server can't see the screen: a phone that didn't ask for a view gets the day.
+  useEffect(() => {
+    if (!viewChosen && view === "week" && window.matchMedia(NARROW).matches) {
+      router.replace(links.dayOf[dates.includes(today) ? today : dates[0]!] ?? links.day);
+    }
+  }, [viewChosen, view, router, links, dates, today]);
+
+  const booked = bookings.filter((b) => b.status !== "cancelled").length;
 
   const columns = useMemo(
     () =>
@@ -293,97 +308,110 @@ export function CalendarView({
           Add your team on the Staff page and their days appear here.
         </p>
       ) : (
-        <div className="relative overflow-x-auto rounded-xl border bg-card">
-          <div
-            className="grid min-w-[44rem]"
-            style={{
-              gridTemplateColumns: `4rem repeat(${lanes.length}, minmax(${view === "week" ? "2.75rem" : "8rem"}, 1fr))`,
-            }}
-          >
-            {/* Headers: one per day (week), or one per staff member (day). */}
-            <div className="sticky left-0 z-20 border-b bg-card" />
-            {view === "week"
-              ? dates.map((date) => {
-                  const isToday = date === today;
-                  const label = formatInZone(new Date(`${date}T12:00:00Z`), "UTC", "EEE");
-                  return (
-                    <Link
-                      key={date}
-                      href={links.dayOf[date] ?? links.day}
-                      className={cn(
-                        "flex flex-col items-center justify-center border-b border-l py-2 text-center hover:bg-muted",
-                        isToday &&
-                          "bg-primary-tint text-primary-tint-foreground hover:bg-primary-tint",
-                        focusRing,
-                      )}
-                      style={{ gridColumn: `span ${visible.length}` }}
-                      aria-label={`${formatInZone(new Date(`${date}T12:00:00Z`), "UTC", "EEEE d MMMM")}${isToday ? ", today" : ""}: open day view`}
+        <>
+          {booked === 0 && (
+            <p
+              role="status"
+              className="rounded-xl border border-dashed bg-card px-5 py-4 text-body text-muted-foreground"
+            >
+              <span className="text-label text-foreground">
+                Nothing booked this {view === "week" ? "week" : "day"}.
+              </span>{" "}
+              Pick a free time below to add a booking, or share your booking link.
+            </p>
+          )}
+          <div className="relative overflow-x-auto rounded-xl border bg-card">
+            <div
+              className="grid min-w-[44rem]"
+              style={{
+                gridTemplateColumns: `4rem repeat(${lanes.length}, minmax(${view === "week" ? "2.75rem" : "8rem"}, 1fr))`,
+              }}
+            >
+              {/* Headers: one per day (week), or one per staff member (day). */}
+              <div className="sticky left-0 z-20 border-b bg-card" />
+              {view === "week"
+                ? dates.map((date) => {
+                    const isToday = date === today;
+                    const label = formatInZone(new Date(`${date}T12:00:00Z`), "UTC", "EEE");
+                    return (
+                      <Link
+                        key={date}
+                        href={links.dayOf[date] ?? links.day}
+                        className={cn(
+                          "flex flex-col items-center justify-center border-b border-l py-2 text-center hover:bg-muted",
+                          isToday &&
+                            "bg-primary-tint text-primary-tint-foreground hover:bg-primary-tint",
+                          focusRing,
+                        )}
+                        style={{ gridColumn: `span ${visible.length}` }}
+                        aria-label={`${formatInZone(new Date(`${date}T12:00:00Z`), "UTC", "EEEE d MMMM")}${isToday ? ", today" : ""}: open day view`}
+                      >
+                        <span className="text-body-sm">{isToday ? "Today" : label}</span>
+                        <span className="text-title">{Number(date.slice(8))}</span>
+                      </Link>
+                    );
+                  })
+                : visible.map((person) => (
+                    <div
+                      key={person.id}
+                      className="flex items-center justify-center gap-2 border-b border-l py-3 text-label"
                     >
-                      <span className="text-body-sm">{isToday ? "Today" : label}</span>
-                      <span className="text-title">{Number(date.slice(8))}</span>
-                    </Link>
-                  );
-                })
-              : visible.map((person) => (
+                      <span
+                        aria-hidden
+                        className={cn("size-2.5 rounded-full", STAFF_DOT[person.color])}
+                      />
+                      {person.name}
+                    </div>
+                  ))}
+
+              {/* Time gutter */}
+              <div className="sticky left-0 z-20 border-r bg-card" aria-hidden>
+                {columns[0]!.rows.map((row, i) => (
                   <div
-                    key={person.id}
-                    className="flex items-center justify-center gap-2 border-b border-l py-3 text-label"
+                    key={i}
+                    className="relative pr-2 text-right font-mono text-caption text-muted-foreground tabular-nums"
+                    style={{ height: rowPx }}
                   >
-                    <span
-                      aria-hidden
-                      className={cn("size-2.5 rounded-full", STAFF_DOT[person.color])}
-                    />
-                    {person.name}
+                    {(row.time.endsWith(":00") || i === 0) && (
+                      <span className="absolute -top-2 right-2">
+                        {row.time}
+                        {row.repeated && "²"}
+                      </span>
+                    )}
                   </div>
                 ))}
+              </div>
 
-            {/* Time gutter */}
-            <div className="sticky left-0 z-20 border-r bg-card" aria-hidden>
-              {columns[0]!.rows.map((row, i) => (
-                <div
-                  key={i}
-                  className="relative pr-2 text-right font-mono text-caption text-muted-foreground tabular-nums"
-                  style={{ height: rowPx }}
-                >
-                  {(row.time.endsWith(":00") || i === 0) && (
-                    <span className="absolute -top-2 right-2">
-                      {row.time}
-                      {row.repeated && "²"}
-                    </span>
-                  )}
-                </div>
-              ))}
-            </div>
-
-            {/* Lanes */}
-            <div
-              ref={gridRef}
-              role="group"
-              aria-label={`${title}: ${view === "week" ? "week" : "day"} grid`}
-              aria-describedby="calendar-keys"
-              onKeyDown={move}
-              className="contents"
-            >
-              {lanes.map((lane) => (
-                <LaneColumn
-                  key={`${lane.date}-${lane.person.id}`}
-                  lane={lane}
-                  zone={zone}
-                  now={now}
-                  rowPx={rowPx}
-                  bookings={bookings.filter((b) => b.staffId === lane.person.id)}
-                  isToday={lane.date === today}
-                  firstOfDay={lane.index % visible.length === 0}
-                  focus={at}
-                  onFocusCell={(row) => setFocus({ lane: lane.index, row })}
-                  cellState={(row) => cellState(lane, row)}
-                  mayBook={mayBook(lane)}
-                  onActivate={(row) => activate(lane, row)}
-                />
-              ))}
+              {/* Lanes */}
+              <div
+                ref={gridRef}
+                role="group"
+                aria-label={`${title}: ${view === "week" ? "week" : "day"} grid`}
+                aria-describedby="calendar-keys"
+                onKeyDown={move}
+                className="contents"
+              >
+                {lanes.map((lane) => (
+                  <LaneColumn
+                    key={`${lane.date}-${lane.person.id}`}
+                    lane={lane}
+                    zone={zone}
+                    now={now}
+                    rowPx={rowPx}
+                    bookings={bookings.filter((b) => b.staffId === lane.person.id)}
+                    isToday={lane.date === today}
+                    firstOfDay={lane.index % visible.length === 0}
+                    focus={at}
+                    onFocusCell={(row) => setFocus({ lane: lane.index, row })}
+                    cellState={(row) => cellState(lane, row)}
+                    mayBook={mayBook(lane)}
+                    onActivate={(row) => activate(lane, row)}
+                  />
+                ))}
+              </div>
             </div>
           </div>
-        </div>
+        </>
       )}
 
       <p id="calendar-keys" className="sr-only">

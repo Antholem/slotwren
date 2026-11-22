@@ -182,3 +182,45 @@ test.describe("dark", () => {
     }
   });
 });
+
+test("staff get bulk-select checkboxes only on their own bookings", async ({ page }) => {
+  test.setTimeout(120_000);
+  const errors = collectConsoleErrors(page);
+  const { fixture } = await businesses.signInWithBusiness(page, "staff", "bulk-staff");
+  const { db } = businesses;
+  // The signed-in staff member is the business's only member.
+  const [member] = await db
+    .select({ userId: schema.memberships.userId })
+    .from(schema.memberships)
+    .where(eq(schema.memberships.businessId, fixture.business.id));
+  const [me] = await db
+    .insert(schema.staff)
+    .values({
+      businessId: fixture.business.id,
+      name: "Jonah",
+      color: "violet",
+      userId: member!.userId,
+    })
+    .returning({ id: schema.staff.id });
+  await db.insert(schema.bookings).values(
+    bookingValues(fixture, new Date("2030-05-02T01:00:00Z"), {
+      staffId: me!.id,
+      customerName: "Jonah's Client",
+    }),
+  );
+
+  await page.goto("/app/bookings?range=all");
+  const table = page.getByRole("table");
+  await expect(table.getByRole("button", { name: /^Jonah's Client/ })).toBeVisible();
+  // Mia's booking (from the fixture) has no checkbox; Jonah's own does.
+  await expect(table.getByRole("checkbox", { name: /^Select Ana Santos,/ })).toHaveCount(0);
+  await table.getByRole("checkbox", { name: /^Select Jonah's Client,/ }).check();
+  await table.getByRole("checkbox", { name: "Select all your bookings on this page" }).click();
+  await expect(page.getByRole("region", { name: "Selected bookings" })).toHaveCount(0);
+  await table.getByRole("checkbox", { name: "Select all your bookings on this page" }).click();
+  await expect(
+    page.getByRole("region", { name: "Selected bookings" }).getByText("1 selected"),
+  ).toBeVisible();
+  await expectNoAxeViolations(page);
+  expect(errors).toEqual([]);
+});

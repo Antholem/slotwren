@@ -58,7 +58,11 @@ export function CommandPalette({ search, zone }: { search: PaletteSearch; zone: 
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
-  const [found, setFound] = useState<{ query: string; results: PaletteResults } | null>(null);
+  const [found, setFound] = useState<{
+    query: string;
+    results: PaletteResults;
+    failed: boolean;
+  } | null>(null);
 
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
@@ -77,8 +81,12 @@ export function CommandPalette({ search, zone }: { search: PaletteSearch; zone: 
     let live = true;
     const timer = setTimeout(() => {
       search(term)
-        .then((results) => live && setFound({ query: term, results }))
-        .catch(() => live && setFound({ query: term, results: { customers: [], bookings: [] } }));
+        .then((results) => live && setFound({ query: term, results, failed: false }))
+        .catch(
+          () =>
+            live &&
+            setFound({ query: term, results: { customers: [], bookings: [] }, failed: true }),
+        );
     }, 200);
     return () => {
       live = false;
@@ -86,8 +94,10 @@ export function CommandPalette({ search, zone }: { search: PaletteSearch; zone: 
     };
   }, [term, search]);
 
-  const results = found?.query === term ? found.results : null;
-  const searching = term.length >= 2 && !results;
+  const settled = found?.query === term ? found : null;
+  const results = settled?.results ?? null;
+  const searching = term.length >= 2 && !settled;
+  const failed = term.length >= 2 && !!settled?.failed;
   const lower = term.toLowerCase();
   const pages = PAGES.filter(
     (p) => !lower || `${p.label} ${p.keywords ?? ""}`.toLowerCase().includes(lower),
@@ -152,13 +162,26 @@ export function CommandPalette({ search, zone }: { search: PaletteSearch; zone: 
               placeholder="Search customers, booking codes, pages"
               aria-label="Search customers, booking codes, pages"
             />
-            <CommandList>
-              {searching && (
-                <p className="px-3 py-2 text-body-sm text-muted-foreground" aria-live="polite">
-                  Searching…
-                </p>
+            {/* Always mounted, so screen readers hear the status change. Outside
+                the list: a listbox may only contain options and groups. */}
+            <p
+              role="status"
+              className={cn(
+                "px-5 text-body-sm",
+                searching || failed ? "pt-3" : "sr-only",
+                failed ? "text-danger-text" : "text-muted-foreground",
               )}
-              <CommandEmpty>Nothing matches &ldquo;{term}&rdquo;.</CommandEmpty>
+            >
+              {searching
+                ? "Searching…"
+                : failed
+                  ? "Search didn’t work. Check your connection and try again."
+                  : ""}
+            </p>
+            <CommandList>
+              {!searching && !failed && (
+                <CommandEmpty>Nothing matches &ldquo;{term}&rdquo;.</CommandEmpty>
+              )}
               {results && results.customers.length > 0 && (
                 <CommandGroup heading="Customers">
                   {results.customers.map((c) => (

@@ -554,6 +554,18 @@ async function cancelInStore(
 }
 
 /**
+ * Booking ids for a bulk change, in the order their rows get locked: valid
+ * uuids, once each, sorted. Every bulk change locks in this same order, so two
+ * overlapping ones (two tabs, two owners) wait for each other instead of
+ * deadlocking. `invalid` counts what was dropped as junk.
+ */
+function lockOrder(bookingIds: string[]): { ids: string[]; invalid: number } {
+  const distinct = [...new Set(bookingIds.map((id) => id.toLowerCase()))];
+  const ids = distinct.filter((id) => z.uuid().safeParse(id).success).sort();
+  return { ids, invalid: distinct.length - ids.length };
+}
+
+/**
  * Cancel several bookings for the team at once (time off over a busy day):
  * one transaction, then one Inngest event that emails each customer, so the
  * owner isn't kept waiting on an email per booking. Bookings that changed
@@ -567,9 +579,8 @@ export async function cancelBookingsForTeam(
 ): Promise<Result<CancelledBookings, BookingError>> {
   const parsed = cancelSchema.safeParse(input ?? {});
   if (!parsed.success) return invalid(parsed.error);
-  const distinct = [...new Set(bookingIds)];
-  const ids = distinct.filter((id) => z.uuid().safeParse(id).success);
-  let notCancelled = distinct.length - ids.length;
+  const { ids, invalid: unusable } = lockOrder(bookingIds);
+  let notCancelled = unusable;
 
   let summaries: BookingSummary[];
   try {
@@ -595,6 +606,8 @@ export async function cancelBookingsForTeam(
   } catch (error) {
     return settleError(error);
   }
+  // Locked in id order; customers hear about them in appointment order.
+  summaries.sort((x, y) => x.startsAt.getTime() - y.startsAt.getTime());
 
   const cancelled = summaries.length;
   if (cancelled === 0) return ok({ cancelled, notCancelled, notified: 0 });
@@ -704,9 +717,8 @@ export async function recordOutcomes(
 ): Promise<Result<RecordedOutcomes, BookingError>> {
   const parsed = outcomeSchema.safeParse(input);
   if (!parsed.success) return invalid(parsed.error);
-  const distinct = [...new Set(bookingIds)];
-  const ids = distinct.filter((id) => z.uuid().safeParse(id).success);
-  let skipped = distinct.length - ids.length;
+  const { ids, invalid: unusable } = lockOrder(bookingIds);
+  let skipped = unusable;
   let marked = 0;
   try {
     await withMemberBookings(actor.claims, actor.businessId, async (store) => {

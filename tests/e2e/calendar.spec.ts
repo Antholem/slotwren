@@ -119,17 +119,33 @@ test("create from an empty slot → open the drawer → reschedule → cancel", 
   expect(errors).toEqual([]);
 });
 
-test("week view, and Today's New booking opens the same sheet", async ({ page }) => {
+test("week view, and Today's New booking opens the same sheet", async ({ page }, testInfo) => {
   test.setTimeout(120_000);
   const errors = collectConsoleErrors(page);
   await ownerWithHours(page);
 
+  // Without a view in the URL: the week on desktop, the day on a phone.
   await page.goto("/app/calendar");
+  if (testInfo.project.name === "mobile") {
+    await expect(page).toHaveURL(/view=day&date=\d{4}-\d{2}-\d{2}/);
+    await expect(page.getByRole("link", { name: "Day", exact: true })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+    // Asking for the week keeps it, on a phone too.
+    await page.goto("/app/calendar?view=week");
+  }
   await expect(page.getByRole("link", { name: "Week", exact: true })).toHaveAttribute(
     "aria-current",
     "page",
   );
   await expect(page.getByRole("link", { name: /, today: open day view$/ })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Week", exact: true })).toHaveAttribute(
+    "aria-current",
+    "page",
+  );
+  // The only booking is years away: this week says it's empty.
+  await expect(page.getByText("Nothing booked this week.")).toBeVisible();
   await expectNoAxeViolations(page);
   await page.getByRole("link", { name: "Next week" }).click();
   await expect(page).toHaveURL(/view=week&date=\d{4}-\d{2}-\d{2}/);
@@ -147,10 +163,12 @@ test("week view, and Today's New booking opens the same sheet", async ({ page })
 test.describe("dark", () => {
   test.use({ colorScheme: "dark" });
 
-  test("the calendar stays readable (axe)", async ({ page }) => {
+  test("the calendar stays readable (axe)", async ({ page }, testInfo) => {
     test.setTimeout(120_000);
     await ownerWithHours(page);
     await page.goto("/app/calendar");
+    // Phones switch to the day view on arrival: check the page they settle on.
+    if (testInfo.project.name === "mobile") await expect(page).toHaveURL(/view=day&date=/);
     await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
     await expectNoAxeViolations(page);
   });

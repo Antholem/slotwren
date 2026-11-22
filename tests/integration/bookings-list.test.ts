@@ -5,7 +5,7 @@ import { type BookingFilters, parseBookingFilters } from "@/lib/bookings-filter"
 import { nextDate, zonedInstant } from "@/lib/time-off";
 import { recordOutcomes } from "@/server/booking/service";
 import type { Actor } from "@/server/catalog/services";
-import { listBookings } from "@/server/db/queries/bookings-list";
+import { bookingBatches, listBookings } from "@/server/db/queries/bookings-list";
 import * as schema from "@/server/db/schema";
 import { bookingsCsv } from "@/server/export/bookings-csv";
 
@@ -201,6 +201,13 @@ describe("bookings list", () => {
       expect(page2.rows.map((r) => r.code)).toEqual(["SW-AAAA-03", "SW-AAAA-04", "SW-AAAA-05"]);
     });
 
+    it("still knows the total on a page past the end (no row to carry it)", async () => {
+      const past = await list(owner, { range: "all" }, { limit: 5, offset: 10 });
+      expect(past).toEqual({ rows: [], total: 8 });
+      const none = await list(owner, { range: "all", q: "nobody" }, { limit: 5, offset: 10 });
+      expect(none).toEqual({ rows: [], total: 0 });
+    });
+
     it("ignores malformed filters instead of failing", async () => {
       const parsed = parseBookingFilters({
         status: "paid",
@@ -249,6 +256,23 @@ describe("bookings list", () => {
         { now: at(TODAY, "15:00") },
       );
       expect(staffTry).toEqual({ ok: true, data: { marked: 0, skipped: 2 } });
+    });
+
+    it("two overlapping bulk outcomes wait for each other instead of deadlocking", async () => {
+      // Yesterday, an hour apart (45 min + buffer), inserted one at a time.
+      const started: string[] = [];
+      for (let i = 0; i < 8; i++) {
+        const time = `${String(9 + i).padStart(2, "0")}:00`;
+        started.push(await insert(`SW-OVER-0${i}`, at(nextDate(TODAY, -1), time)));
+      }
+      // Same bookings, picked in opposite orders (two tabs, two owners).
+      const [first, second] = await Promise.all([
+        recordOutcomes(owner, started, { outcome: "completed" }, { now: NOW }),
+        recordOutcomes(owner, [...started].reverse(), { outcome: "completed" }, { now: NOW }),
+      ]);
+      // Marking the same way twice is a no-op success, so both report all eight.
+      expect(first).toEqual({ ok: true, data: { marked: 8, skipped: 0 } });
+      expect(second).toEqual({ ok: true, data: { marked: 8, skipped: 0 } });
     });
   });
 
@@ -319,6 +343,55 @@ describe("bookings list", () => {
           .filter(Boolean),
       ).toHaveLength(1);
       expect((await csv(owner, { range: "all" })).split("\r\n").filter(Boolean)).toHaveLength(9);
+    });
+
+    it("walks batches by (starts_at, id): a booking added mid-export shifts nothing", async () => {
+      // Two bookings at the same instant (Mia's and Jonah's): the id breaks the tie.
+      await insert("SW-TIE-01", at(nextDate(TODAY, 1), "10:00"), { staffId: jonahId });
+      const seen: string[] = [];
+      let batches = 0;
+      for await (const batch of bookingBatches(
+        owner.claims,
+        owner.businessId,
+        filters({ range: "all" }),
+        { zone: MANILA, now: NOW, today: TODAY },
+        3,
+      )) {
+        batches++;
+        seen.push(...batch.map((r) => r.code));
+        // After the first batch, someone books a time before everything already exported.
+        if (batches === 1) await insert("SW-LATE-01", at(nextDate(TODAY, -30), "10:00"));
+      }
+      expect(batches).toBe(3);
+      expect(seen).toHaveLength(9);
+      expect(new Set(seen).size).toBe(9);
+      expect(seen).not.toContain("SW-LATE-01");
+      expect(seen[0]).toBe("SW-AAAA-07"); // oldest first
+    });
+
+    it("never counts the whole result while exporting", async () => {
+      const { onQuery } = await import("@/server/db/client");
+      const selects: string[] = [];
+      const stop = onQuery((query) => {
+        if (/^select\b/i.test(query) && query.includes('"bookings"')) selects.push(query);
+      });
+      let exported = 0;
+      try {
+        for await (const batch of bookingBatches(
+          owner.claims,
+          owner.businessId,
+          filters({ range: "all" }),
+          { zone: MANILA, now: NOW, today: TODAY },
+          3,
+        )) {
+          exported += batch.length;
+        }
+      } finally {
+        stop();
+      }
+      expect(exported).toBe(8);
+      expect(selects).toHaveLength(3); // 3 + 3 + 2
+      for (const query of selects) expect(query).not.toMatch(/count\(/i);
     });
   });
 });

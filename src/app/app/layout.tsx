@@ -4,6 +4,7 @@ import { AppToaster } from "@/components/dashboard/app-toaster";
 import { LiveBookings } from "@/components/dashboard/live-bookings";
 import { Sidebar } from "@/components/dashboard/sidebar";
 import { TopBar, TopBarSkeleton } from "@/components/dashboard/top-bar";
+import { TopBarBoundary } from "@/components/dashboard/top-bar-boundary";
 import { getDashboardContext } from "@/server/auth/dashboard";
 
 import { paletteSearchAction, saveProfileAction, switchBusiness } from "./actions";
@@ -19,9 +20,13 @@ export default function DashboardLayout({ children }: LayoutProps<"/app">) {
     <div className="flex min-h-dvh flex-1 bg-background">
       <Sidebar />
       <div className="flex min-w-0 flex-1 flex-col">
-        <Suspense fallback={<TopBarSkeleton />}>
-          <DashboardTopBar />
-        </Suspense>
+        {/* Its own error boundary: a failed session lookup leaves a plain bar,
+            and the page's error state (app/error.tsx) renders below it. */}
+        <TopBarBoundary>
+          <Suspense fallback={<TopBarSkeleton />}>
+            <DashboardTopBar />
+          </Suspense>
+        </TopBarBoundary>
         {children}
       </div>
       <AppToaster />

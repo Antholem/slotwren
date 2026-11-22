@@ -103,32 +103,41 @@ export async function listBookings(
   filters: BookingFilters,
   context: { zone: string; now: Date; today: string; limit: number; offset: number },
 ): Promise<{ rows: BookingRow[]; total: number }> {
-  const rows = await withRls(claims, (tx) =>
-    tx
+  const where = whereFor(businessId, filters, context);
+  return withRls(claims, async (tx) => {
+    const rows = await tx
       .select({ ...columns, total: sql<number>`(count(*) over ())::int` })
       .from(bookings)
-      .innerJoin(
-        services,
-        and(eq(services.id, bookings.serviceId), eq(services.businessId, bookings.businessId)),
-      )
-      .innerJoin(
-        staff,
-        and(eq(staff.id, bookings.staffId), eq(staff.businessId, bookings.businessId)),
-      )
-      .innerJoin(
-        customers,
-        and(eq(customers.id, bookings.customerId), eq(customers.businessId, bookings.businessId)),
-      )
-      .where(whereFor(businessId, filters, context))
+      .innerJoin(services, servicesJoin)
+      .innerJoin(staff, staffJoin)
+      .innerJoin(customers, customersJoin)
+      .where(where)
       .orderBy(...orderFor(filters))
       .limit(context.limit)
-      .offset(context.offset),
-  );
-  return {
-    rows: rows.map(({ total: _, ...row }) => row),
-    total: rows[0]?.total ?? 0,
-  };
+      .offset(context.offset);
+    if (rows.length > 0 || context.offset === 0) {
+      return { rows: rows.map(({ total: _, ...row }) => row), total: rows[0]?.total ?? 0 };
+    }
+    // A page past the end has no row to carry the count: ask for it.
+    const [counted] = await tx
+      .select({ total: sql<number>`count(*)::int` })
+      .from(bookings)
+      .innerJoin(customers, customersJoin)
+      .where(where);
+    return { rows: [], total: counted?.total ?? 0 };
+  });
 }
+
+// Every name comes from a join (composite: the row and the booking share a business).
+const servicesJoin = and(
+  eq(services.id, bookings.serviceId),
+  eq(services.businessId, bookings.businessId),
+);
+const staffJoin = and(eq(staff.id, bookings.staffId), eq(staff.businessId, bookings.businessId));
+const customersJoin = and(
+  eq(customers.id, bookings.customerId),
+  eq(customers.businessId, bookings.businessId),
+);
 
 /** Does the business have any bookings at all? (The empty state.) */
 export async function hasAnyBooking(claims: RlsClaims, businessId: string): Promise<boolean> {
@@ -143,8 +152,11 @@ export async function hasAnyBooking(claims: RlsClaims, businessId: string): Prom
 }
 
 /**
- * Every booking matching `filters`, in batches (the CSV export streams them).
- * Each batch is one query in its own short transaction.
+ * Every booking matching `filters`, oldest first, in batches (the CSV export
+ * streams them). Each batch is one query in its own short transaction, picking
+ * up after the last (starts_at, id) it saw: a booking added or cancelled
+ * meanwhile can't shift the rest, so none is skipped or repeated, and no batch
+ * counts the whole result.
  */
 export async function* bookingBatches(
   claims: RlsClaims,
@@ -153,13 +165,31 @@ export async function* bookingBatches(
   context: { zone: string; now: Date; today: string },
   batchSize = 500,
 ): AsyncGenerator<BookingRow[]> {
-  for (let offset = 0; ; offset += batchSize) {
-    const { rows } = await listBookings(claims, businessId, filters, {
-      ...context,
-      limit: batchSize,
-      offset,
-    });
+  const where = whereFor(businessId, filters, context);
+  let after: { startsAt: Date; id: string } | null = null;
+  for (;;) {
+    const cursor: { startsAt: Date; id: string } | null = after;
+    const rows: BookingRow[] = await withRls(claims, (tx) =>
+      tx
+        .select(columns)
+        .from(bookings)
+        .innerJoin(services, servicesJoin)
+        .innerJoin(staff, staffJoin)
+        .innerJoin(customers, customersJoin)
+        .where(
+          and(
+            where,
+            cursor
+              ? sql`(${bookings.startsAt}, ${bookings.id}) > (${cursor.startsAt.toISOString()}::timestamptz, ${cursor.id}::uuid)`
+              : undefined,
+          ),
+        )
+        .orderBy(asc(bookings.startsAt), asc(bookings.id))
+        .limit(batchSize),
+    );
     if (rows.length > 0) yield rows;
     if (rows.length < batchSize) return;
+    const last = rows.at(-1)!;
+    after = { startsAt: last.startsAt, id: last.id };
   }
 }

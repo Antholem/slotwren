@@ -41,6 +41,7 @@ import {
   PAGE_SIZE,
   RANGE_LABELS,
   RANGES,
+  retainSelection,
   type SortKey,
 } from "@/lib/bookings-filter";
 import { formatInZone } from "@/lib/dates";
@@ -100,12 +101,29 @@ export function BookingsView({
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [bulkPending, startBulk] = useTransition();
 
-  // A new page of rows clears a selection the user can no longer see.
-  const shownIds = rows.map((r) => r.id).join();
+  // Staff may change only their own bookings (RLS): only those get a checkbox.
+  const myStaff = new Set(options.staff.filter((s) => s.isMe).map((s) => s.id));
+  const canSelect = (row: BookingRow) => role === "owner" || myStaff.has(row.staffId);
+  const selectable = rows.filter(canSelect);
+
+  // New filters or another page clear the selection. A refresh of the same
+  // view (a live booking, a colleague's change) keeps whatever is still shown.
+  const view = bookingFiltersQuery(filters);
+  const shownIds = selectable.map((r) => r.id).join();
+  const [lastView, setLastView] = useState(view);
   const [lastShown, setLastShown] = useState(shownIds);
-  if (shownIds !== lastShown) {
+  if (view !== lastView) {
+    setLastView(view);
     setLastShown(shownIds);
     setSelected(new Set());
+  } else if (shownIds !== lastShown) {
+    setLastShown(shownIds);
+    setSelected((current) =>
+      retainSelection(
+        current,
+        selectable.map((r) => r.id),
+      ),
+    );
   }
 
   function go(next: Partial<BookingFilters>) {
@@ -162,11 +180,13 @@ export function BookingsView({
     });
   }
 
-  const allOnPage = rows.length > 0 && rows.every((r) => selected.has(r.id));
-  const someOnPage = rows.some((r) => selected.has(r.id));
+  const allOnPage = selectable.length > 0 && selectable.every((r) => selected.has(r.id));
+  const someOnPage = selectable.some((r) => selected.has(r.id));
   const first = total === 0 ? 0 : (filters.page - 1) * PAGE_SIZE + 1;
   const last = Math.min(total, filters.page * PAGE_SIZE);
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  // A refresh or bulk change can leave the page number beyond the last page.
+  const pastEnd = rows.length === 0 && total > 0;
   const upcomingOnly = ["today", "next7", "next30", "upcoming"].includes(filters.range);
 
   return (
@@ -265,17 +285,21 @@ export function BookingsView({
         <table className="w-full min-w-[60rem] border-collapse text-left text-body">
           <caption className="sr-only">
             Bookings, {RANGE_LABELS[filters.range].toLowerCase()}
-            {total > 0 && `, showing ${first} to ${last} of ${total}`}
+            {total > 0 && !pastEnd && `, showing ${first} to ${last} of ${total}`}
           </caption>
           <thead>
             <tr className="border-b text-body-sm text-muted-foreground">
               <th scope="col" className="w-14 py-3 pl-6">
                 <Checkbox
-                  aria-label="Select all bookings on this page"
-                  disabled={rows.length === 0}
+                  aria-label={
+                    role === "owner"
+                      ? "Select all bookings on this page"
+                      : "Select all your bookings on this page"
+                  }
+                  disabled={selectable.length === 0}
                   checked={allOnPage ? true : someOnPage ? "indeterminate" : false}
                   onCheckedChange={(on) =>
-                    setSelected(on === true ? new Set(rows.map((r) => r.id)) : new Set())
+                    setSelected(on === true ? new Set(selectable.map((r) => r.id)) : new Set())
                   }
                   className="size-5"
                 />
@@ -318,19 +342,21 @@ export function BookingsView({
                   )}
                 >
                   <td className="py-4 pl-6">
-                    <Checkbox
-                      aria-label={`Select ${row.customerName}, ${row.code}`}
-                      checked={isSelected}
-                      onCheckedChange={(on) =>
-                        setSelected((current) => {
-                          const next = new Set(current);
-                          if (on === true) next.add(row.id);
-                          else next.delete(row.id);
-                          return next;
-                        })
-                      }
-                      className="size-5"
-                    />
+                    {canSelect(row) && (
+                      <Checkbox
+                        aria-label={`Select ${row.customerName}, ${row.code}`}
+                        checked={isSelected}
+                        onCheckedChange={(on) =>
+                          setSelected((current) => {
+                            const next = new Set(current);
+                            if (on === true) next.add(row.id);
+                            else next.delete(row.id);
+                            return next;
+                          })
+                        }
+                        className="size-5"
+                      />
+                    )}
                   </td>
                   <td className="px-3 py-4">
                     <button
@@ -416,13 +442,28 @@ export function BookingsView({
                 </Button>
               </div>
             </div>
+          ) : pastEnd ? (
+            <div className="flex flex-col items-center gap-3 px-6 py-14 text-center">
+              <h2 className="text-title">That page is past the end</h2>
+              <p className="text-body text-muted-foreground">
+                The list has <span className="font-mono tabular-nums">{pages}</span>{" "}
+                {pages === 1 ? "page" : "pages"} now.
+              </p>
+              <Link
+                href={href({ page: pages })}
+                className={cn(
+                  "min-h-11 content-center text-label text-primary underline underline-offset-4",
+                  focusRing,
+                )}
+              >
+                Go to page {pages}
+              </Link>
+            </div>
           ) : (
             <div className="flex flex-col items-center gap-3 px-6 py-14 text-center">
               <h2 className="text-title">No bookings match</h2>
               <p className="text-body text-muted-foreground">
-                {filters.page > 1 && total > 0
-                  ? "That page is past the end of the list."
-                  : "Try another date range, or clear the filters."}
+                Try another date range, or clear the filters.
               </p>
               <Link
                 href={"/app/bookings?range=all" as Route}
@@ -437,7 +478,7 @@ export function BookingsView({
           ))}
       </div>
 
-      {total > 0 && (
+      {total > 0 && !pastEnd && (
         <nav aria-label="Pages" className="flex flex-wrap items-center justify-between gap-4">
           <p className="text-body text-muted-foreground">
             Showing{" "}

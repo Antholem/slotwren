@@ -7,6 +7,7 @@ import { useEffect, useRef } from "react";
 import { toast } from "sonner";
 
 import { formatInZone } from "@/lib/dates";
+import { announceBookingChanged } from "@/lib/live-events";
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
 
 type BookingRow = {
@@ -27,6 +28,7 @@ const SOURCE: Record<BookingRow["source"], string> = {
 };
 
 const REFRESH_DEBOUNCE_MS = 300;
+const TOAST_MS = 10_000;
 
 /** The connection state on <html data-live>: for debugging, and for tests to wait on. */
 function setState(state: "connecting" | "subscribed" | "reconnecting") {
@@ -79,6 +81,10 @@ export function LiveBookings({
       if (row.source === "manual" && row.created_by_user_id === latest.current.userId) return;
       const when = formatInZone(new Date(row.starts_at), latest.current.zone, "EEE d MMM, HH:mm");
       toast(`New booking from ${SOURCE[row.source]}`, {
+        // One toast per booking, however often the event arrives.
+        id: row.id,
+        // Long enough to reach "View" (WCAG 2.2.1); hovering or focusing pauses it.
+        duration: TOAST_MS,
         description: `${row.customer_name} · ${when}`,
         action: {
           label: "View",
@@ -92,23 +98,25 @@ export function LiveBookings({
 
     const onChange = (payload: RealtimePostgresChangesPayload<BookingRow>) => {
       if (payload.eventType === "INSERT") announce(payload.new);
+      // An open booking drawer loads its own detail: tell it which booking moved.
+      if (payload.eventType !== "DELETE") announceBookingChanged(payload.new.id);
       refresh();
     };
 
     function subscribe() {
       if (stopped) return;
+      // INSERT and UPDATE only. Realtime can't filter or authorise DELETE events,
+      // so it would send every business's deletes to every dashboard; the app
+      // never deletes bookings (cancelling is an UPDATE).
+      const filter = {
+        schema: "public",
+        table: "bookings",
+        filter: `business_id=eq.${businessId}`,
+      } as const;
       const current = supabase
         .channel(`bookings:${businessId}:${Date.now()}`)
-        .on(
-          "postgres_changes",
-          {
-            event: "*",
-            schema: "public",
-            table: "bookings",
-            filter: `business_id=eq.${businessId}`,
-          },
-          onChange,
-        )
+        .on("postgres_changes", { ...filter, event: "INSERT" }, onChange)
+        .on("postgres_changes", { ...filter, event: "UPDATE" }, onChange)
         .subscribe((status) => {
           if (current !== channel || stopped) return; // a replaced or closed channel
           if (status === "SUBSCRIBED") {
