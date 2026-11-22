@@ -7,4 +7,9 @@
 --
 -- Only bookings are published: the dashboard refetches through the server on
 -- each change, so the payload is a signal, not the data the page renders.
+--
+-- DELETE events are the exception: Realtime can't check RLS on a deleted row,
+-- so it sends them unfiltered with only the primary key (the booking's id),
+-- never its data. Bookings are never deleted by the app (cancelling is a
+-- status); only removing a whole business cascades to them.
 alter publication supabase_realtime add table public.bookings;

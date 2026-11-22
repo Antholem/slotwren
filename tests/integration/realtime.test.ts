@@ -71,9 +71,44 @@ describe("realtime bookings", () => {
     await listen(clientA, "a-unfiltered");
     await listen(clientA, "a-snooping-on-b", `business_id=eq.${b.business.id}`);
     await listen(clientB, "b-own", `business_id=eq.${b.business.id}`);
-    // Realtime starts streaming changes a moment after the subscription is confirmed.
-    await new Promise((resolve) => setTimeout(resolve, 1_500));
-  }, 60_000);
+    // Realtime starts streaming a while after confirming a subscription (longer on a
+    // cold CI stack). Warm up: book once in each business and wait until every channel
+    // that should hear it has. After this, a silent channel means "filtered out", never
+    // "not streaming yet", so the checks for nothing arriving mean something.
+    const warmUp = new Date("2031-03-01T02:00:00Z");
+    for (let round = 0; ; round++) {
+      await db
+        .insert(schema.bookings)
+        .values([
+          bookingValues(a, new Date(warmUp.getTime() + round * 3_600_000), {
+            code: `SW-WARM-A${round}`,
+          }),
+          bookingValues(b, new Date(warmUp.getTime() + round * 3_600_000), {
+            code: `SW-WARM-B${round}`,
+          }),
+        ]);
+      const ready = async () => {
+        const heard = (channel: string) => received.some((r) => r.channel === channel);
+        return heard("a-own") && heard("a-unfiltered") && heard("b-own");
+      };
+      const deadline = Date.now() + 5_000;
+      while (!(await ready()) && Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 200));
+      }
+      if (await ready()) break;
+      if (round >= 5) throw new Error("Realtime never started streaming");
+    }
+    // Anything still in flight from the warm-up arrives, then the slate is wiped.
+    await new Promise((resolve) => setTimeout(resolve, 1_000));
+    // Warm-up rows were the only events, and none crossed businesses.
+    expect(received.filter((r) => r.channel === "a-snooping-on-b")).toEqual([]);
+    expect(
+      received.filter((r) => r.channel.startsWith("a-") && r.businessId === b.business.id),
+    ).toEqual([]);
+    // The warm-up rows stay (2031, nobody reads them): deleting them would send DELETE
+    // events, which Realtime doesn't filter (see the realtime_bookings migration).
+    received.length = 0;
+  }, 90_000);
 
   afterAll(async () => {
     for (const client of clients) await client.removeAllChannels();
