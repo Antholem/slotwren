@@ -8,6 +8,7 @@ import { prettyTime } from "@/lib/hours";
 import { gridBounds, hoursToSpans, localSpan } from "@/lib/timeline";
 import { greetingAt, todayRanges } from "@/lib/today";
 import { getDashboardContext } from "@/server/auth/dashboard";
+import { getBookingOptions } from "@/server/db/queries/calendar";
 import { getToday } from "@/server/db/queries/today";
 
 import { AiCard } from "./_today/ai-card";
@@ -38,7 +39,16 @@ async function Today() {
   const now = new Date();
   const zone = business.timezone;
   const ranges = todayRanges(now, zone);
-  const data = await getToday(claims, { businessId: business.id, role, ranges, now });
+  const [data, options] = await Promise.all([
+    getToday(claims, { businessId: business.id, role, ranges, now }),
+    getBookingOptions(claims, business.id),
+  ]);
+  const newBooking = {
+    today: ranges.date,
+    options,
+    currency: business.currency,
+    staffOnly: role === "staff",
+  };
 
   const owner = role === "owner";
   const brandNew = owner && !data.hasBookings;
@@ -74,7 +84,7 @@ async function Today() {
         </div>
         <div className="flex shrink-0 gap-3">
           <CopyLinkButton url={url} className="hidden sm:inline-flex" />
-          <NewBookingButton url={url} />
+          <NewBookingButton {...newBooking} />
         </div>
       </div>
 
@@ -91,6 +101,7 @@ async function Today() {
             url={url}
             firstBooking={!data.hasBookings}
             owner={owner}
+            newBooking={newBooking}
             className={data.setup ? undefined : "lg:col-span-2"}
           />
           {data.setup && <SetupChecklist setup={data.setup} url={url} />}

@@ -3,6 +3,7 @@ import "server-only";
 import { z } from "zod";
 
 import { err, ok, type Result } from "@/lib/result";
+import { nextDate, zonedInstant } from "@/lib/time-off";
 import { isValidTimeZone } from "@/lib/timezones";
 import { customerSchema, notesSchema, optionalText } from "@/lib/validation/booking";
 import type { Actor } from "@/server/catalog/services";
@@ -671,4 +672,105 @@ export async function recordOutcome(
   } catch (error) {
     return settleError(error);
   }
+}
+
+// ── member reads: what the team may book ──────────────────────────────
+
+export type MemberSlot = {
+  /** ISO instants. */
+  start: string;
+  end: string;
+  staffId: string;
+  /** Business-local "HH:MM", and which of a repeated hour (clocks going back). */
+  time: string;
+  repeated: "first" | "second" | null;
+};
+
+const memberSlotsSchema = z.object({
+  serviceId: z.uuid("Pick a service."),
+  staffId: staffChoice,
+  date: z.iso.date("Pick a date."),
+  excludeBookingId: z.uuid().optional(),
+});
+
+/**
+ * Times the team may book `serviceId` on a business-local `date`: the same
+ * rules createBooking and rescheduleBooking re-check (working hours, time off,
+ * other bookings and buffers), without minimum notice or the booking window,
+ * never in the past. `excludeBookingId` frees a booking's own time (moving it).
+ */
+export async function memberSlots(
+  actor: Actor,
+  timezone: string,
+  input: unknown,
+  { now = new Date() }: { now?: Date } = {},
+): Promise<Result<{ slots: MemberSlot[] }, BookingError>> {
+  const parsed = memberSlotsSchema.safeParse(input);
+  if (!parsed.success) return invalid(parsed.error);
+  const { serviceId, staffId, date, excludeBookingId } = parsed.data;
+  const from = zonedInstant(date, "00:00", timezone);
+  const to = zonedInstant(nextDate(date), "00:00", timezone);
+
+  const context = await withMemberBookings(actor.claims, actor.businessId, (store) =>
+    store.loadSlotContext({ serviceId, from, to, excludeBookingId }),
+  );
+  if (!context || context.service.archived) {
+    return err("not_found", BOOKING_MESSAGES.serviceGone);
+  }
+  const slots = getAvailableSlots({
+    business: { ...context.business, minNoticeMin: 0, maxDaysAhead: 365 },
+    service: context.service,
+    staff: context.staff,
+    staffId,
+    from,
+    to,
+    now,
+  });
+  return ok({
+    slots: slots.map((slot) => ({
+      start: slot.start.toISOString(),
+      end: slot.end.toISOString(),
+      staffId: slot.staffId,
+      time: slot.local.time,
+      repeated: slot.local.repeated,
+    })),
+  });
+}
+
+export type FreeStaff = { id: string; name: string; color: "teal" | "violet" | "pink" };
+
+/**
+ * For each booking, the other staff members who do its service and are free
+ * at exactly its time (reassigning: time off over a booking, or "Change
+ * staff" in the booking drawer). Bookings this member can't see are left out.
+ */
+export async function freeStaffFor(
+  actor: Actor,
+  bookingIds: string[],
+  { now = new Date() }: { now?: Date } = {},
+): Promise<Record<string, FreeStaff[]>> {
+  const ids = [...new Set(bookingIds)].filter((id) => z.uuid().safeParse(id).success);
+  if (ids.length === 0) return {};
+  return withMemberBookings(actor.claims, actor.businessId, async (store) => {
+    const result: Record<string, FreeStaff[]> = {};
+    for (const id of ids) {
+      const booking = await store.findBooking(id);
+      if (!booking) continue;
+      const context = await store.loadSlotContext({
+        serviceId: booking.serviceId,
+        from: booking.startsAt,
+        to: booking.startsAt,
+        excludeBookingId: booking.id,
+      });
+      if (!context) continue;
+      result[id] = context.staff
+        .filter(
+          (person) =>
+            person.id !== booking.staffId &&
+            slotAt(context, { staffId: person.id, startsAt: booking.startsAt, now, member: true }),
+        )
+        .map(({ id: staffId, name, color }) => ({ id: staffId, name, color }));
+    }
+    return result;
+  });
 }

@@ -5,7 +5,7 @@ import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import type { SetupProgress } from "@/server/db/queries/today";
 
-import { CopyLinkButton, NewBookingButton } from "./header-actions";
+import { CopyLinkButton, NewBookingButton, type NewBookingProps } from "./header-actions";
 
 /** Nothing on today (docs/design/owner-dashboard/empty-brand-new-business-today). */
 export function EmptyToday({
@@ -13,8 +13,10 @@ export function EmptyToday({
   firstBooking,
   owner,
   className,
+  newBooking,
 }: {
   url: string;
+  newBooking: NewBookingProps;
   /** No bookings ever: invite the first one. */
   firstBooking: boolean;
   owner: boolean;
@@ -42,7 +44,7 @@ export function EmptyToday({
       <p className="max-w-md text-body text-muted-foreground">{body}</p>
       <div className="mt-2 flex flex-wrap justify-center gap-3">
         <CopyLinkButton url={url} variant="default" />
-        {owner && <NewBookingButton url={url} variant="text" />}
+        {owner && <NewBookingButton variant="text" {...newBooking} />}
       </div>
     </section>
   );

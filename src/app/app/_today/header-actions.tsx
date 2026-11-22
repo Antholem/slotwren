@@ -6,6 +6,9 @@ import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import type { BookingOptions } from "@/server/db/queries/calendar";
+
+import { BookingSheet } from "../_booking/booking-sheet";
 
 /** "Copy booking link", confirming in place and for screen readers. */
 export function CopyLinkButton({
@@ -58,42 +61,63 @@ export function CopyLinkButton({
   );
 }
 
-/**
- * "New booking". Manual booking arrives with the calendar (step 3.4); until
- * then this says so and points at the booking page, which works today.
- */
+/** What the manual-booking sheet needs, passed down from the server page. */
+export type NewBookingProps = {
+  today: string;
+  options: BookingOptions;
+  currency: string;
+  staffOnly: boolean;
+};
+
+/** "New booking": opens the manual-booking sheet for today. */
 export function NewBookingButton({
-  url,
   variant = "primary",
-}: {
-  url: string;
-  variant?: "primary" | "text";
-}) {
-  function open() {
-    toast("Manual booking is coming with the calendar", {
-      description: "Until then, book on your booking page.",
-      action: { label: "Open booking page", onClick: () => window.open(url, "_blank", "noopener") },
-    });
-  }
+  today,
+  options,
+  currency,
+  staffOnly,
+}: NewBookingProps & { variant?: "primary" | "text" }) {
+  const [open, setOpen] = useState(false);
+  const sheet = (
+    <BookingSheet
+      open={open}
+      onOpenChange={setOpen}
+      start={{ date: today }}
+      options={options}
+      currency={currency}
+      staffOnly={staffOnly}
+    />
+  );
 
   if (variant === "text") {
     return (
-      <Button type="button" variant="ghost" onClick={open} className="h-11 px-5 text-label">
-        Add a booking yourself
-      </Button>
+      <>
+        <Button
+          type="button"
+          variant="ghost"
+          onClick={() => setOpen(true)}
+          className="h-11 px-5 text-label"
+        >
+          Add a booking yourself
+        </Button>
+        {sheet}
+      </>
     );
   }
   return (
-    <Button
-      type="button"
-      onClick={open}
-      aria-label="New booking"
-      className="size-14 rounded-xl text-label sm:h-11 sm:w-auto sm:rounded-lg sm:px-5"
-    >
-      <Plus aria-hidden className="size-6 sm:size-4" />
-      <span aria-hidden className="hidden sm:inline">
-        New booking
-      </span>
-    </Button>
+    <>
+      <Button
+        type="button"
+        onClick={() => setOpen(true)}
+        aria-label="New booking"
+        className="size-14 rounded-xl text-label sm:h-11 sm:w-auto sm:rounded-lg sm:px-5"
+      >
+        <Plus aria-hidden className="size-6 sm:size-4" />
+        <span aria-hidden className="hidden sm:inline">
+          New booking
+        </span>
+      </Button>
+      {sheet}
+    </>
   );
 }

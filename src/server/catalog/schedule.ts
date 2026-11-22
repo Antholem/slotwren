@@ -5,7 +5,12 @@ import { z } from "zod";
 import { hoursOutsideOpening, type OpeningRange, weekSchemaFor } from "@/lib/hours";
 import { err, ok, type Result } from "@/lib/result";
 import { timeOffSchemaFor, type TimeOffValues } from "@/lib/time-off";
-import { cancelBookingsForTeam } from "@/server/booking/service";
+import {
+  cancelBookingsForTeam,
+  type FreeStaff,
+  freeStaffFor,
+  rescheduleBooking,
+} from "@/server/booking/service";
 import { pgError } from "@/server/db/errors";
 import {
   type BookingDuringTimeOff,
@@ -38,6 +43,7 @@ type ScheduleError = "forbidden" | "not_found" | "invalid_input";
 const FORBIDDEN =
   "You can change only your own hours and time off. Ask an owner for anyone else's.";
 const NOT_FOUND = "That no longer exists. Refresh to see the latest.";
+const REASSIGN_FORBIDDEN = "Only owners can hand bookings to someone else. Keep or cancel them.";
 const idSchema = z.uuid();
 
 function invalid(error: z.ZodError) {
@@ -84,12 +90,24 @@ export async function saveStaffHours(
   return ok({ warnings });
 }
 
-/** How the owner answered "this time off overlaps bookings". */
-export type OnBookings = "keep" | "cancel";
+/**
+ * How the owner answered "this time off overlaps bookings": keep them, cancel
+ * them (emailing each customer), or reassign them: booking id → the staff
+ * member taking it. Bookings left out of a reassignment are kept.
+ */
+export type OnBookings = "keep" | "cancel" | { reassign: Record<string, string> };
 
 export type TimeOffOutcome =
-  /** Overlapping bookings exist and no choice was given: nothing was saved. */
-  | { status: "needs_choice"; bookings: BookingDuringTimeOff[] }
+  /**
+   * Overlapping bookings exist and no choice was given: nothing was saved.
+   * `reassignTo`: who could take each booking (owners only; staff can't
+   * hand a booking to someone else).
+   */
+  | {
+      status: "needs_choice";
+      bookings: BookingDuringTimeOff[];
+      reassignTo: Record<string, FreeStaff[]> | null;
+    }
   | {
       status: "saved";
       id: string;
@@ -98,15 +116,20 @@ export type TimeOffOutcome =
       notified: number;
       /** Bookings that couldn't be cancelled (changed meanwhile, or not yours). */
       notCancelled: number;
+      /** Bookings moved to someone else, and those that couldn't be (taken meanwhile). */
+      reassigned: number;
+      notReassigned: number;
     };
 
-const onBookingsSchema = z.enum(["keep", "cancel"]).optional();
+const onBookingsSchema = z
+  .union([z.enum(["keep", "cancel"]), z.object({ reassign: z.record(z.uuid(), z.uuid()) })])
+  .optional();
 
 /**
  * Save time off, minding the bookings it overlaps. With no choice and some
  * overlap, saves nothing and returns them so the owner can choose: keep them,
- * or cancel them and email the customers (through booking/service.ts, the one
- * write path). Reassigning comes with the calendar in Phase 3.
+ * cancel them and email the customers, or reassign them to staff who do the
+ * service and are free then. Changes go through booking/service.ts.
  */
 async function saveMindingBookings(
   actor: ScheduleActor,
@@ -124,8 +147,17 @@ async function saveMindingBookings(
     values,
   );
   if (overlapping.length > 0 && !choice.data) {
-    return ok({ status: "needs_choice", bookings: overlapping });
+    const reassignTo =
+      actor.role === "owner"
+        ? await freeStaffFor(
+            actor,
+            overlapping.map((booking) => booking.id),
+          )
+        : null;
+    return ok({ status: "needs_choice", bookings: overlapping, reassignTo });
   }
+  const reassign = typeof choice.data === "object" ? choice.data.reassign : null;
+  if (reassign && actor.role !== "owner") return err("forbidden", REASSIGN_FORBIDDEN);
 
   const saved = await save();
   if (!saved.ok) return saved;
@@ -135,7 +167,25 @@ async function saveMindingBookings(
     cancelled: 0,
     notified: 0,
     notCancelled: 0,
+    reassigned: 0,
+    notReassigned: 0,
   };
+  if (reassign) {
+    // Same time, another person, through the one write path; the customer
+    // gets the "now with Jonah" email. Each stands alone: one that was taken
+    // meanwhile stays with its original staff member and is counted.
+    for (const booking of overlapping) {
+      const to = reassign[booking.id];
+      if (!to) continue;
+      const moved = await rescheduleBooking(
+        { kind: "member", actor, bookingId: booking.id },
+        { startsAt: booking.startsAt, staffId: to },
+      );
+      if (moved.ok) outcome.reassigned++;
+      else outcome.notReassigned++;
+    }
+    return ok(outcome);
+  }
   if (choice.data !== "cancel") return ok(outcome);
 
   // One transaction for all of them; the emails go through a job (M5).

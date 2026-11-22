@@ -409,8 +409,8 @@ Notes for Phase 2:
 
 - [x] Done in step 2.3 (deferred from step 1.9, staff time off): time off that overlaps
       bookings shows them and asks the owner to keep them, or cancel them and email the
-      customers (through `booking/service.ts`). Still to do in Phase 3: **reassign** to another
-      staff member, from the calendar.
+      customers (through `booking/service.ts`). Done in steps 3.3–3.4: a third choice,
+      **reassign**, offering only staff who do the service and are free at that time.
 
 ### Phase 3 — Dashboard (week 4)
 
