@@ -1,6 +1,6 @@
 "use client";
 
-import { Sparkle } from "lucide-react";
+import { AppWindow, Globe, Pencil, Sparkle } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import type { AppointmentStatus } from "@/lib/today";
@@ -60,14 +60,28 @@ export function StatusBadge({ status }: { status: AppointmentStatus }) {
   );
 }
 
-const SOURCE = { page: "Booking page", widget: "Website", ai: "AI", manual: "Team" } as const;
+const SOURCE = {
+  page: { label: "Page", icon: Globe },
+  widget: { label: "Widget", icon: AppWindow },
+  manual: { label: "Manual", icon: Pencil },
+  ai: { label: "AI", icon: Sparkle },
+} as const;
 
+/** Where a booking came from: outlined, except the AI receptionist's (tinted, as in the mockups). */
 export function SourceBadge({ source }: { source: keyof typeof SOURCE }) {
+  const { label, icon: Icon } = SOURCE[source];
   return (
-    <span className="inline-flex items-center gap-1.5 rounded-full bg-primary-tint px-3 py-1 text-body-sm whitespace-nowrap text-primary-tint-foreground">
-      {source === "ai" && <Sparkle aria-hidden className="size-3.5" />}
+    <span
+      className={cn(
+        "inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-body-sm whitespace-nowrap",
+        source === "ai"
+          ? "bg-primary-tint text-primary-tint-foreground"
+          : "border border-muted-foreground text-foreground",
+      )}
+    >
+      <Icon aria-hidden className="size-3.5" />
       <span className="sr-only">Booked through: </span>
-      {SOURCE[source]}
+      {label}
     </span>
   );
 }

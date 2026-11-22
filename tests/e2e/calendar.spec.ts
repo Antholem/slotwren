@@ -92,7 +92,7 @@ test("create from an empty slot → open the drawer → reschedule → cancel", 
     .click();
   const drawer = page.getByRole("dialog", { name: "Booking details" });
   await expect(drawer.getByText("10:00 – 10:45")).toBeVisible();
-  await expect(drawer.getByText("Booked through: Team")).toBeVisible(); // source badge
+  await expect(drawer.getByText("Booked through: Manual")).toBeVisible(); // source badge
   await expect(drawer.getByText(/^Booked by /)).toBeVisible();
   await expectNoAxeViolations(page);
 

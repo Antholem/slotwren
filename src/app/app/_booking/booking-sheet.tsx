@@ -39,6 +39,8 @@ export type SheetStart = {
   /** Business-local "HH:MM" to preselect, if it's offered. */
   time?: string;
   staffId?: string;
+  /** Book for this customer (from their profile). */
+  customer?: CustomerMatch;
 };
 
 /**
@@ -131,7 +133,9 @@ function BookingForm({
   const chosen = slot && offered.some((s) => s.start === slot.start) ? slot : (preselect ?? null);
   const missedWanted = !!wanted && slots.status === "ready" && !preselect;
 
-  const [customer, setCustomer] = useState<Customer>({ mode: "search" });
+  const [customer, setCustomer] = useState<Customer>(
+    start.customer ? { mode: "picked", match: start.customer } : { mode: "search" },
+  );
   const [customerError, setCustomerError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [timeError, setTimeError] = useState<string | null>(null);
@@ -139,7 +143,12 @@ function BookingForm({
 
   const form = useForm<ManualBookingFormInput, unknown, ManualBookingFormValues>({
     resolver: zodResolver(manualBookingFormSchema),
-    defaultValues: { name: "", email: "", phone: "", notes: "" },
+    defaultValues: {
+      name: start.customer?.name ?? "",
+      email: start.customer?.email ?? "",
+      phone: start.customer?.phone ?? "",
+      notes: "",
+    },
     mode: "onTouched",
   });
   const { register, handleSubmit, formState, setValue, setError } = form;
