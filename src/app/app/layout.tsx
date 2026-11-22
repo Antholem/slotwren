@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 
 import { AppToaster } from "@/components/dashboard/app-toaster";
+import { LiveBookings } from "@/components/dashboard/live-bookings";
 import { Sidebar } from "@/components/dashboard/sidebar";
 import { TopBar, TopBarSkeleton } from "@/components/dashboard/top-bar";
 import { getDashboardContext } from "@/server/auth/dashboard";
@@ -31,16 +32,25 @@ export default function DashboardLayout({ children }: LayoutProps<"/app">) {
 async function DashboardTopBar() {
   const { business, businesses, role, user, profileName } = await getDashboardContext();
   return (
-    <TopBar
-      business={{ id: business.id, name: business.name, logoUrl: business.logoUrl }}
-      businesses={businesses.map((b) => ({ id: b.id, name: b.name }))}
-      role={role}
-      email={user.email}
-      profileName={profileName}
-      switchBusiness={switchBusiness}
-      saveProfile={saveProfileAction}
-      search={paletteSearchAction}
-      timezone={business.timezone}
-    />
+    <>
+      <TopBar
+        business={{ id: business.id, name: business.name, logoUrl: business.logoUrl }}
+        businesses={businesses.map((b) => ({ id: b.id, name: b.name }))}
+        role={role}
+        email={user.email}
+        profileName={profileName}
+        switchBusiness={switchBusiness}
+        saveProfile={saveProfileAction}
+        search={paletteSearchAction}
+        timezone={business.timezone}
+      />
+      {/* Keyed by business: switching businesses resubscribes. */}
+      <LiveBookings
+        key={business.id}
+        businessId={business.id}
+        userId={user.id}
+        zone={business.timezone}
+      />
+    </>
   );
 }
