@@ -127,6 +127,13 @@
       "when": 1795236346884,
       "tag": "20261121044546_booking_customer_snapshot",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1795311467734,
+      "tag": "20261122013747_customer_notes_guard",
+      "breakpoints": true
     }
   ]
 }
