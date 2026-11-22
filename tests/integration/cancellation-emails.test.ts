@@ -113,6 +113,7 @@ describe("cancelling bookings in bulk", () => {
     expect(emails).toEqual([
       {
         name: "booking/cancellation.emails",
+        // In appointment order, however they were picked (or locked).
         data: { businessId: a.business.id, bookingIds: ids, message: MESSAGE },
       },
     ]);
@@ -144,6 +145,31 @@ describe("cancelling bookings in bulk", () => {
     expect(result).toEqual({ ok: true, data: { cancelled: 1, notCancelled: 2, notified: 0 } });
     expect(await statuses([keep.id])).toEqual({ [keep.id]: "cancelled" });
     expect(jobs.sends[1]![0]!.data).toMatchObject({ bookingIds: [keep.id] });
+  });
+
+  it("two overlapping bulk cancels wait for each other instead of deadlocking", async () => {
+    // An hour apart (45 min + buffer), inserted in one statement.
+    const ids = (
+      await db
+        .insert(schema.bookings)
+        .values(
+          Array.from({ length: 8 }, (_, i) =>
+            bookingValues(a, at(`${String(9 + i).padStart(2, "0")}:00`)),
+          ),
+        )
+        .returning({ id: schema.bookings.id })
+    ).map((b) => b.id);
+    // Same bookings, picked in opposite orders (two tabs, two owners).
+    const [first, second] = await Promise.all([
+      cancelBookingsForTeam(owner, ids, {}, { now: NOW, customerMessage: MESSAGE }),
+      cancelBookingsForTeam(owner, [...ids].reverse(), {}, { now: NOW, customerMessage: MESSAGE }),
+    ]);
+    expect(first.ok && second.ok).toBe(true);
+    if (!first.ok || !second.ok) return;
+    // Each booking was cancelled exactly once; the other attempt counted it as changed.
+    expect(first.data.cancelled + second.data.cancelled).toBe(ids.length);
+    expect(first.data.notCancelled + second.data.notCancelled).toBe(ids.length);
+    expect(Object.values(await statuses(ids))).toEqual(Array(ids.length).fill("cancelled"));
   });
 
   it("can't cancel another business's bookings", async () => {
