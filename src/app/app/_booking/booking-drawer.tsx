@@ -18,6 +18,7 @@ import {
 import { NativeSelect } from "@/components/shared/native-select";
 import { formatInZone } from "@/lib/dates";
 import { formatDuration } from "@/lib/hours";
+import { onBookingChanged } from "@/lib/live-events";
 import { formatPrice } from "@/lib/money";
 import { cn } from "@/lib/utils";
 import type { FreeStaff, MemberSlot } from "@/server/booking/service";
@@ -112,6 +113,10 @@ function DrawerBody({
       live = false;
     };
   }, [bookingId, version]);
+
+  // Changed elsewhere while open (a customer cancelled, a colleague moved it):
+  // reload, keeping what's on screen until the new detail arrives.
+  useEffect(() => onBookingChanged(bookingId, () => setVersion((v) => v + 1)), [bookingId]);
 
   const reload = () => {
     setMode("view");

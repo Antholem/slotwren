@@ -187,3 +187,66 @@ test("insights for a business with no bookings yet shows the empty state", async
   await expect(page.getByRole("heading", { name: "No insights yet" })).toBeVisible();
   await expectNoAxeViolations(page);
 });
+
+test("an open booking drawer shows a live cancel at once", async ({ page }) => {
+  test.setTimeout(120_000);
+  const errors = collectConsoleErrors(page);
+  const { fixture } = await businesses.signInWithBusiness(page, "owner", "live-drawer");
+  const [booking] = await businesses.db
+    .select({ id: schema.bookings.id })
+    .from(schema.bookings)
+    .where(eq(schema.bookings.businessId, fixture.business.id));
+
+  await page.goto(`/app/bookings?range=all&booking=${booking!.id}`);
+  const drawer = page.getByRole("dialog", { name: "Booking details" });
+  await expect(drawer.getByText("Confirmed", { exact: true })).toBeVisible();
+  await live(page);
+
+  // The customer cancels with their manage link (here: straight in the database).
+  await businesses.db
+    .update(schema.bookings)
+    .set({ status: "cancelled", cancelledAt: new Date(), cancelledBy: "customer" })
+    .where(eq(schema.bookings.id, booking!.id));
+  await expect(drawer.getByText("Cancelled", { exact: true })).toBeVisible({ timeout: 8_000 });
+  expect(errors).toEqual([]);
+});
+
+test("a live refresh keeps the bookings still on screen selected", async ({ page }) => {
+  test.setTimeout(120_000);
+  const errors = collectConsoleErrors(page);
+  const { fixture } = await businesses.signInWithBusiness(page, "owner", "live-select");
+  const start = Date.parse("2030-05-02T01:00:00Z");
+  await businesses.db
+    .insert(schema.bookings)
+    .values(
+      [1, 2].map((day) =>
+        bookingValues(fixture, new Date(start + day * 86_400_000), { customerName: `Kept ${day}` }),
+      ),
+    );
+
+  await page.goto("/app/bookings?range=all");
+  await live(page);
+  const table = page.getByRole("table");
+  await table.getByRole("checkbox", { name: /^Select Kept 1,/ }).check();
+  await table.getByRole("checkbox", { name: /^Select Kept 2,/ }).check();
+  const selection = page.getByRole("region", { name: "Selected bookings" });
+  await expect(selection.getByText("2 selected")).toBeVisible();
+
+  // A booking arrives live: the table refreshes with a new row.
+  await businesses.db
+    .insert(schema.bookings)
+    .values(
+      bookingValues(fixture, new Date(start + 3 * 86_400_000), { customerName: "Arrived Live" }),
+    );
+  await expect(table.getByRole("button", { name: /^Arrived Live/ })).toBeVisible({
+    timeout: 8_000,
+  });
+  await expect(selection.getByText("2 selected")).toBeVisible();
+  await expect(table.getByRole("checkbox", { name: /^Select Kept 1,/ })).toBeChecked();
+
+  // A new filter is a new view: the selection clears.
+  await page.getByLabel("Status").selectOption("confirmed");
+  await expect(page).toHaveURL(/status=confirmed/);
+  await expect(selection).toHaveCount(0);
+  expect(errors).toEqual([]);
+});

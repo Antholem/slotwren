@@ -135,6 +135,10 @@ from `src/server/db/queries/public/` and `queries/system/`.
   through `private.claim_staff_invite()`, which users can't call directly. An invite id is
   worthless to anyone but the invitee (migration `20261110133345_invites_by_email.sql`).
   Onboarding sends new users with a pending invite to `/invite` before the wizard.
-- Realtime (dashboard live bookings) uses these same policies when it's added.
+- Realtime (dashboard live bookings, migration `20261122061429_realtime_bookings.sql`) uses
+  these same policies: `postgres_changes` checks each INSERT and UPDATE against the
+  subscriber's `bookings` select policy. DELETE events bypass RLS and filters (Realtime
+  sends their primary key to every subscriber), so the dashboard subscribes to INSERT and
+  UPDATE only. The app never deletes bookings; cancelling is an UPDATE.
 - Staff can read `businesses.stripe_customer_id`: column grants can't vary by
   role-in-business. It's an identifier, not a secret, and it never reaches public pages.
