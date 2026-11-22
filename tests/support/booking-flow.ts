@@ -96,9 +96,44 @@ export async function toTimes(page: Page, fixture: Fixture) {
   await expect(timeChips(page).first()).toBeAttached();
 }
 
-/** A whole booking through the page; returns its confirmation URL and start. */
-export async function bookThroughPage(page: Page, fixture: Fixture, chip = 1) {
+/**
+ * On the time step, switch to the customer's date `days` ahead. Tests book
+ * tomorrow by default: it always has a full day of times, while late in the
+ * business's day "today" may have one time left or none (the suite runs at
+ * any hour). A business with a day's minimum notice needs two days ahead.
+ */
+export async function toDaysAhead(page: Page, days: number) {
+  const date = await page.evaluate(
+    (ahead) =>
+      new Intl.DateTimeFormat("en-CA", {
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      }).format(Date.now() + ahead * 86_400_000),
+    days,
+  );
+  const url = new URL(page.url());
+  url.searchParams.set("date", date);
+  await page.goto(url.pathname + url.search);
+  await expect(page).toHaveURL(new RegExp(`date=${date}`));
+  await expect(timeChips(page).nth(3)).toBeAttached();
+}
+
+export const toTomorrow = (page: Page) => toDaysAhead(page, 1);
+
+/**
+ * A whole booking through the page; returns its confirmation URL and start.
+ * Books `daysAhead` days ahead (tomorrow by default; 0 for today, for a test
+ * whose business and timezone leave times today).
+ */
+export async function bookThroughPage(
+  page: Page,
+  fixture: Fixture,
+  chip = 1,
+  { daysAhead = 1 }: { daysAhead?: number } = {},
+) {
   await toTimes(page, fixture);
+  if (daysAhead > 0) await toDaysAhead(page, daysAhead);
   await choose(timeChips(page).nth(chip));
   const start = await timeChips(page).nth(chip).getAttribute("value");
   await pressContinue(page);
