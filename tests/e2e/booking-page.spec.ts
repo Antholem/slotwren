@@ -11,6 +11,7 @@ import {
   timeChips,
   toTimes,
   visibleButton,
+  toTomorrow,
 } from "../support/booking-flow";
 import { bookingValues } from "../support/db";
 import { collectConsoleErrors, expectNoAxeViolations } from "../support/e2e";
@@ -67,6 +68,8 @@ test("a customer books with the keyboard and sees the confirmation", async ({ pa
   const chips = timeChips(page);
   await expect(chips.first()).toBeAttached();
   await expectNoAxeViolations(page);
+  // Tomorrow: a full day of times whatever the hour (today may have one left).
+  await toTomorrow(page);
   await chips.first().focus();
   await page.keyboard.press("ArrowRight");
   await expect(chips.nth(1)).toBeChecked();
@@ -144,17 +147,8 @@ test("a time taken while the customer types sends them back with the nearest ope
   const errors = collectConsoleErrors(page);
   const fixture = await bookableBusiness();
   await toTimes(page, fixture);
-  // Tomorrow (the customer's), so there are openings either side whatever the time:
-  // late in the business's day, today may have only one time left.
-  const tomorrow = await page.evaluate(() =>
-    new Intl.DateTimeFormat("en-CA", { year: "numeric", month: "2-digit", day: "2-digit" }).format(
-      Date.now() + 86_400_000,
-    ),
-  );
-  const url = new URL(page.url());
-  url.searchParams.set("date", tomorrow);
-  await page.goto(url.pathname + url.search);
-  await expect(timeChips(page).nth(3)).toBeAttached();
+  // Tomorrow: openings either side whatever the time (see toTomorrow).
+  await toTomorrow(page);
   await choose(timeChips(page).nth(2));
   await pressContinue(page);
   await expect(page).toHaveURL(/step=details/);

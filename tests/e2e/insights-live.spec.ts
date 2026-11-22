@@ -83,7 +83,7 @@ test("a booking made on the public page appears on Today within seconds, and lea
   const visitor = await browser.newContext();
   const customer = await visitor.newPage();
   await asNewVisitor(customer);
-  await bookThroughPage(customer, fixture, 0);
+  await bookThroughPage(customer, fixture, 0, { daysAhead: 0 });
   await visitor.close();
 
   // No reload: the toast and the appointment arrive by Realtime.

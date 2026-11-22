@@ -55,7 +55,8 @@ test("book, open the manage link, reschedule, then cancel", async ({ page }) => 
     .update(schema.businesses)
     .set({ cancellationWindowHours: 1, minNoticeMin: 24 * 60 })
     .where(eq(schema.businesses.id, fixture.business.id));
-  const { start } = await bookThroughPage(page, fixture);
+  // Two days ahead: a full day beyond the 24 h notice, with times to move to.
+  const { start } = await bookThroughPage(page, fixture, 1, { daysAhead: 2 });
   const bookingId = page.url().split("/booked/")[1]!;
 
   // Confirmation → Manage booking
