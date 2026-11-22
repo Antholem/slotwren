@@ -77,16 +77,14 @@ describe("realtime bookings", () => {
     // "not streaming yet", so the checks for nothing arriving mean something.
     const warmUp = new Date("2031-03-01T02:00:00Z");
     for (let round = 0; ; round++) {
-      await db
-        .insert(schema.bookings)
-        .values([
-          bookingValues(a, new Date(warmUp.getTime() + round * 3_600_000), {
-            code: `SW-WARM-A${round}`,
-          }),
-          bookingValues(b, new Date(warmUp.getTime() + round * 3_600_000), {
-            code: `SW-WARM-B${round}`,
-          }),
-        ]);
+      await db.insert(schema.bookings).values([
+        bookingValues(a, new Date(warmUp.getTime() + round * 3_600_000), {
+          code: `SW-WARM-A${round}`,
+        }),
+        bookingValues(b, new Date(warmUp.getTime() + round * 3_600_000), {
+          code: `SW-WARM-B${round}`,
+        }),
+      ]);
       const ready = async () => {
         const heard = (channel: string) => received.some((r) => r.channel === channel);
         return heard("a-own") && heard("a-unfiltered") && heard("b-own");
