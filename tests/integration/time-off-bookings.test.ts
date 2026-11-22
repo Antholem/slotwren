@@ -123,6 +123,8 @@ describe("time off over existing bookings", () => {
           },
           expect.objectContaining({ id: eleven.id, startsAt: at("11:00") }),
         ],
+        // Jonah doesn't do Haircut here, so nobody could take them.
+        reassignTo: { [tenOClock.id]: [], [eleven.id]: [] },
       },
     });
     expect(await timeOffCount(a.staff.id)).toBe(0);

@@ -37,6 +37,7 @@ import {
   toTimeOffInput,
 } from "@/lib/time-off";
 import { cn } from "@/lib/utils";
+import type { FreeStaff } from "@/server/booking/service";
 import type { OnBookings } from "@/server/catalog/schedule";
 import type { BookingDuringTimeOff } from "@/server/db/queries/schedule";
 import type { DashboardStaff } from "@/server/db/queries/staff";
@@ -459,7 +460,10 @@ function TimeOffForm({
   };
 
   // Bookings the range overlaps, once the server has asked what to do with them.
-  const [conflicts, setConflicts] = useState<BookingDuringTimeOff[] | null>(null);
+  const [conflicts, setConflicts] = useState<{
+    bookings: BookingDuringTimeOff[];
+    reassignTo: Record<string, FreeStaff[]> | null;
+  } | null>(null);
 
   const set = <K extends keyof TimeOffInput>(key: K, value: TimeOffInput[K]) => {
     setValues((v) => ({ ...v, [key]: value }));
@@ -491,7 +495,7 @@ function TimeOffForm({
         return;
       }
       if (result.data.status === "needs_choice") {
-        setConflicts(result.data.bookings);
+        setConflicts({ bookings: result.data.bookings, reassignTo: result.data.reassignTo });
         return;
       }
       toast.success(entry ? "Time off updated" : "Time off added", {
@@ -616,7 +620,8 @@ function TimeOffForm({
 
       {conflicts ? (
         <BookingConflicts
-          bookings={conflicts}
+          bookings={conflicts.bookings}
+          reassignTo={conflicts.reassignTo}
           timezone={context.timezone}
           pending={pending}
           onChoose={save}
@@ -644,13 +649,25 @@ function TimeOffForm({
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
-/** The toast's second line after saving with "cancel and notify". */
+/** The toast's second line after saving with "cancel and notify" or "reassign". */
 function cancellationSummary(outcome: {
   cancelled: number;
   notified: number;
   notCancelled: number;
+  reassigned: number;
+  notReassigned: number;
 }): string | undefined {
   const parts: string[] = [];
+  if (outcome.reassigned > 0) {
+    parts.push(
+      `Reassigned ${plural(outcome.reassigned, "booking")}; the customers are told who they'll see.`,
+    );
+  }
+  if (outcome.notReassigned > 0) {
+    parts.push(
+      `${plural(outcome.notReassigned, "booking")} couldn't be reassigned (taken meanwhile) and stayed as they were. Check the calendar.`,
+    );
+  }
   if (outcome.cancelled > 0) {
     const what = `Cancelled ${plural(outcome.cancelled, "booking")}`;
     parts.push(
@@ -671,16 +688,20 @@ function cancellationSummary(outcome: {
 
 /**
  * "This time off overlaps 2 bookings": what they are, and the choice to keep
- * them or cancel them and email the customers. Reassigning comes in Phase 3.
+ * them, reassign them to someone free (owners), or cancel them and email the
+ * customers.
  */
 function BookingConflicts({
   bookings,
+  reassignTo,
   timezone,
   pending,
   onChoose,
   onBack,
 }: {
   bookings: BookingDuringTimeOff[];
+  /** Who could take each booking; null when this member can't reassign. */
+  reassignTo: Record<string, FreeStaff[]> | null;
   timezone: string;
   pending: boolean;
   onChoose: (choice: OnBookings) => void;
@@ -691,6 +712,14 @@ function BookingConflicts({
   // Land keyboard and screen-reader users on the choice when it appears.
   useEffect(() => heading.current?.focus(), []);
   const count = plural(bookings.length, "booking");
+  const canReassign =
+    !!reassignTo && bookings.some((booking) => (reassignTo[booking.id] ?? []).length > 0);
+  const [reassigning, setReassigning] = useState(false);
+  const [targets, setTargets] = useState<Record<string, string>>(() =>
+    Object.fromEntries(
+      bookings.map((booking) => [booking.id, reassignTo?.[booking.id]?.[0]?.id ?? "keep"]),
+    ),
+  );
   return (
     <div
       role="group"
@@ -709,7 +738,11 @@ function BookingConflicts({
             This time off overlaps {count}
           </h3>
           <p className="text-body-sm text-muted-foreground">
-            Keep them as they are, or cancel them and email each customer.
+            {reassigning
+              ? "Pick who takes each one. Only people who do the service and are free then are offered."
+              : canReassign
+                ? "Keep them, hand them to someone free, or cancel them and email each customer."
+                : "Keep them as they are, or cancel them and email each customer."}
           </p>
         </div>
       </div>
@@ -726,38 +759,103 @@ function BookingConflicts({
             <span className="font-mono text-body-sm text-muted-foreground tabular-nums">
               {booking.code}
             </span>
+            {reassigning && (
+              <div className="flex w-full flex-col gap-1 pt-1">
+                <Label htmlFor={`${headingId}-${booking.id}`} className="text-body-sm">
+                  Who takes it
+                </Label>
+                <NativeSelect
+                  id={`${headingId}-${booking.id}`}
+                  value={targets[booking.id] ?? "keep"}
+                  onChange={(event) =>
+                    setTargets((t) => ({ ...t, [booking.id]: event.target.value }))
+                  }
+                >
+                  {(reassignTo?.[booking.id] ?? []).map((person) => (
+                    <option key={person.id} value={person.id}>
+                      {person.name}
+                    </option>
+                  ))}
+                  <option value="keep">
+                    {(reassignTo?.[booking.id] ?? []).length === 0
+                      ? "Nobody is free: keep it as it is"
+                      : "Keep it as it is"}
+                  </option>
+                </NativeSelect>
+              </div>
+            )}
           </li>
         ))}
       </ul>
-      <div className="flex flex-wrap justify-end gap-3">
-        <Button
-          type="button"
-          variant="ghost"
-          className="h-11 px-4 text-label"
-          disabled={pending}
-          onClick={onBack}
-        >
-          Change dates
-        </Button>
-        <Button
-          type="button"
-          variant="secondary"
-          className="h-11 px-4 text-label"
-          disabled={pending}
-          onClick={() => onChoose("keep")}
-        >
-          Keep {bookings.length === 1 ? "it" : "them"}
-        </Button>
-        <Button
-          type="button"
-          disabled={pending}
-          className="h-11 bg-destructive px-4 text-label text-destructive-foreground hover:bg-destructive-hover"
-          onClick={() => onChoose("cancel")}
-        >
-          {pending && <Loader2 aria-hidden className="animate-spin" />}
-          Cancel and notify
-        </Button>
-      </div>
+      {reassigning ? (
+        <div className="flex flex-wrap justify-end gap-3">
+          <Button
+            type="button"
+            variant="ghost"
+            className="h-11 px-4 text-label"
+            disabled={pending}
+            onClick={() => setReassigning(false)}
+          >
+            Back
+          </Button>
+          <Button
+            type="button"
+            disabled={pending}
+            className="h-11 px-4 text-label"
+            onClick={() =>
+              onChoose({
+                reassign: Object.fromEntries(
+                  Object.entries(targets).filter(([, staffId]) => staffId !== "keep"),
+                ),
+              })
+            }
+          >
+            {pending && <Loader2 aria-hidden className="animate-spin" />}
+            Reassign and notify
+          </Button>
+        </div>
+      ) : (
+        <div className="flex flex-wrap justify-end gap-3">
+          <Button
+            type="button"
+            variant="ghost"
+            className="h-11 px-4 text-label"
+            disabled={pending}
+            onClick={onBack}
+          >
+            Change dates
+          </Button>
+          {canReassign && (
+            <Button
+              type="button"
+              variant="secondary"
+              className="h-11 px-4 text-label"
+              disabled={pending}
+              onClick={() => setReassigning(true)}
+            >
+              Reassign
+            </Button>
+          )}
+          <Button
+            type="button"
+            variant="secondary"
+            className="h-11 px-4 text-label"
+            disabled={pending}
+            onClick={() => onChoose("keep")}
+          >
+            Keep {bookings.length === 1 ? "it" : "them"}
+          </Button>
+          <Button
+            type="button"
+            disabled={pending}
+            className="h-11 bg-destructive px-4 text-label text-destructive-foreground hover:bg-destructive-hover"
+            onClick={() => onChoose("cancel")}
+          >
+            {pending && <Loader2 aria-hidden className="animate-spin" />}
+            Cancel and notify
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
