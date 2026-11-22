@@ -44,6 +44,9 @@ describe("CommandPalette", () => {
     expect(await screen.findByText("Searching…")).toBeInTheDocument();
     expect(screen.queryByText(/Nothing matches/)).not.toBeInTheDocument();
 
+    // The search starts after a short debounce: answer it once it's asked.
+    await vi.waitFor(() => expect(search).toHaveBeenCalledWith("zzzz"));
+    expect(screen.queryByText(/Nothing matches/)).not.toBeInTheDocument();
     await act(async () => finish(none));
     expect(await screen.findByText("Nothing matches “zzzz”.")).toBeInTheDocument();
     expect(screen.queryByText("Searching…")).not.toBeInTheDocument();
