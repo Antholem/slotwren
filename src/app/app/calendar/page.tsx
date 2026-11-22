@@ -38,6 +38,8 @@ async function Calendar({ searchParams }: Pick<PageProps<"/app/calendar">, "sear
   const now = new Date();
   const today = todayIn(zone, now);
   const view = params.view === "day" ? "day" : "week";
+  // No view in the URL: week here, and the view switches phones to day (it can see the width).
+  const viewChosen = params.view === "day" || params.view === "week";
   const asked = typeof params.date === "string" && DATE.test(params.date) ? params.date : null;
   const date = asked && !Number.isNaN(Date.parse(`${asked}T12:00:00Z`)) ? asked : today;
   const dates = view === "week" ? weekDates(date) : [date];
@@ -82,6 +84,7 @@ async function Calendar({ searchParams }: Pick<PageProps<"/app/calendar">, "sear
   return (
     <CalendarView
       view={view}
+      viewChosen={viewChosen}
       dates={dates}
       today={today}
       zone={zone}
