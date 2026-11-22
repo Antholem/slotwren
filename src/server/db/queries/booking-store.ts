@@ -39,7 +39,7 @@ export type SlotContext = {
     active: boolean;
     archived: boolean;
   };
-  staff: (SlotStaff & { name: string })[];
+  staff: (SlotStaff & { name: string; color: "teal" | "violet" | "pink" })[];
 };
 
 export type LockedBooking = {
@@ -172,6 +172,7 @@ export function bookingStore(tx: Transaction, businessId: string) {
           .select({
             id: staff.id,
             name: staff.name,
+            color: staff.color,
             active: staff.active,
             sortOrder: staff.sortOrder,
           })
@@ -311,6 +312,24 @@ export function bookingStore(tx: Transaction, businessId: string) {
       if (locked) return { booking: locked, visible: true };
       const [seen] = await tx.select({ id: bookings.id }).from(bookings).where(where);
       return { booking: null, visible: !!seen };
+    },
+
+    /** A booking as it is now, without locking it (reads: who else could take it). */
+    async findBooking(bookingId: string): Promise<LockedBooking | null> {
+      const [row] = await tx
+        .select({
+          id: bookings.id,
+          code: bookings.code,
+          serviceId: bookings.serviceId,
+          staffId: bookings.staffId,
+          customerId: bookings.customerId,
+          startsAt: bookings.startsAt,
+          endsAt: bookings.endsAt,
+          status: bookings.status,
+        })
+        .from(bookings)
+        .where(and(eq(bookings.id, bookingId), eq(bookings.businessId, businessId)));
+      return row ?? null;
     },
 
     /** Move a booking. False if nothing was updated (RLS filtered it). */
