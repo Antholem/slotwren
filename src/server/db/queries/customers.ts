@@ -65,8 +65,14 @@ export async function listCustomers(
     visits: [direction(visits)],
   }[sort];
 
-  const rows = await withRls(claims, (tx) =>
-    tx
+  const search = and(
+    eq(customers.businessId, businessId),
+    term
+      ? or(ilike(customers.name, escapeLike(term)), ilike(customers.email, escapeLike(term)))
+      : undefined,
+  );
+  return withRls(claims, async (tx) => {
+    const rows = await tx
       .select({
         id: customers.id,
         name: customers.name,
@@ -83,26 +89,28 @@ export async function listCustomers(
         bookings,
         and(eq(bookings.customerId, customers.id), eq(bookings.businessId, customers.businessId)),
       )
-      .where(
-        and(
-          eq(customers.businessId, businessId),
-          term
-            ? or(ilike(customers.name, escapeLike(term)), ilike(customers.email, escapeLike(term)))
-            : undefined,
-        ),
-      )
+      .where(search)
       .groupBy(customers.id)
       .orderBy(...order, asc(customers.id))
       .limit(limit)
-      .offset(offset),
-  );
-  return {
-    rows: rows.map(({ total: _, ...row }) => ({
-      ...row,
-      lastVisit: row.lastVisit ? new Date(row.lastVisit) : null,
-    })),
-    total: rows[0]?.total ?? 0,
-  };
+      .offset(offset);
+    let total = rows[0]?.total ?? 0;
+    if (rows.length === 0 && offset > 0) {
+      // A page past the end has no row to carry the count: ask for it.
+      const [counted] = await tx
+        .select({ total: sql<number>`count(*)::int` })
+        .from(customers)
+        .where(search);
+      total = counted?.total ?? 0;
+    }
+    return {
+      rows: rows.map(({ total: _, ...row }) => ({
+        ...row,
+        lastVisit: row.lastVisit ? new Date(row.lastVisit) : null,
+      })),
+      total,
+    };
+  });
 }
 
 export type CustomerBooking = {

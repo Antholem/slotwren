@@ -149,6 +149,20 @@ describe("customers", () => {
       ]);
     });
 
+    it("still knows the total on a page past the end (no row to carry it)", async () => {
+      const page = (q: string) =>
+        listCustomers(owner.claims, owner.businessId, {
+          q,
+          sort: "name",
+          dir: "asc",
+          limit: 25,
+          offset: 50,
+          now: NOW,
+        });
+      expect(await page("")).toEqual({ rows: [], total: 2 });
+      expect(await page("nobody")).toEqual({ rows: [], total: 0 });
+    });
+
     it("runs one query however many customers and bookings (no N+1)", async () => {
       const few = await countQueries(() => list(owner));
       const extra = await db

@@ -4,12 +4,14 @@ import Link from "next/link";
 import { Suspense } from "react";
 
 import { PageBody, PageHeader } from "@/components/dashboard/page-header";
+import { bookingUrl } from "@/lib/booking-link";
 import { formatInZone } from "@/lib/dates";
 import { formatAmount } from "@/lib/money";
 import { cn } from "@/lib/utils";
 import { getDashboardContext } from "@/server/auth/dashboard";
 import { CUSTOMER_SORTS, type CustomerSort, listCustomers } from "@/server/db/queries/customers";
 
+import { CopyLinkButton } from "../_today/header-actions";
 import { CustomerSearch } from "./customer-search";
 
 export const metadata: Metadata = { title: "Customers" };
@@ -74,6 +76,7 @@ async function Customers({ searchParams }: Pick<PageProps<"/app/customers">, "se
   const first = total === 0 ? 0 : (query.page - 1) * PAGE_SIZE + 1;
   const last = Math.min(total, query.page * PAGE_SIZE);
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const pastEnd = rows.length === 0 && total > 0;
 
   const sortHeader = (label: string, sort: CustomerSort, align?: "right", edge?: string) => {
     const active = query.sort === sort;
@@ -165,21 +168,47 @@ async function Customers({ searchParams }: Pick<PageProps<"/app/customers">, "se
             ))}
           </tbody>
         </table>
-        {rows.length === 0 && (
+        {pastEnd ? (
           <div className="flex flex-col items-center gap-3 px-6 py-14 text-center">
-            <span className="flex size-14 items-center justify-center rounded-xl bg-primary-tint text-primary-tint-foreground">
-              <Users aria-hidden className="size-6" />
-            </span>
-            <h2 className="text-title">{query.q ? "No customers match" : "No customers yet"}</h2>
-            <p className="max-w-md text-body text-muted-foreground">
-              {query.q
-                ? `Nobody's name or email contains “${query.q}”.`
-                : "Customers appear here after their first booking."}
+            <h2 className="text-title">That page is past the end</h2>
+            <p className="text-body text-muted-foreground">
+              The list has <span className="font-mono tabular-nums">{pages}</span>{" "}
+              {pages === 1 ? "page" : "pages"} now.
             </p>
+            <Link
+              href={hrefFor(query, { page: pages })}
+              className={cn(
+                "min-h-11 content-center text-label text-primary underline underline-offset-4",
+                focusRing,
+              )}
+            >
+              Go to page {pages}
+            </Link>
           </div>
+        ) : (
+          rows.length === 0 && (
+            <div className="flex flex-col items-center gap-3 px-6 py-14 text-center">
+              <span className="flex size-14 items-center justify-center rounded-xl bg-primary-tint text-primary-tint-foreground">
+                <Users aria-hidden className="size-6" />
+              </span>
+              <h2 className="text-title">{query.q ? "No customers match" : "No customers yet"}</h2>
+              <p className="max-w-md text-body text-muted-foreground">
+                {query.q
+                  ? `Nobody's name or email contains “${query.q}”.`
+                  : "Customers appear here after their first booking. Share your booking page to get the first one."}
+              </p>
+              {!query.q && (
+                <CopyLinkButton
+                  url={bookingUrl(business.slug)}
+                  variant="default"
+                  className="mt-1"
+                />
+              )}
+            </div>
+          )
         )}
       </div>
-      {total > 0 && (
+      {total > 0 && !pastEnd && (
         <nav aria-label="Pages" className="flex flex-wrap items-center justify-between gap-4">
           <p className="text-body text-muted-foreground">
             Showing{" "}

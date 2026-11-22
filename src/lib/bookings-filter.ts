@@ -91,6 +91,17 @@ export function parseBookingFilters(
   };
 }
 
+/**
+ * The selection after the same view refreshed: whatever is still on screen
+ * (and selectable) stays selected. Returns `selected` itself when nothing
+ * dropped out, so React can skip the update.
+ */
+export function retainSelection(selected: Set<string>, visible: readonly string[]): Set<string> {
+  const shown = new Set(visible);
+  const kept = new Set([...selected].filter((id) => shown.has(id)));
+  return kept.size === selected.size ? selected : kept;
+}
+
 /** Filters back to a query string, leaving defaults out. */
 export function bookingFiltersQuery(filters: Partial<BookingFilters>): string {
   const params = new URLSearchParams();
