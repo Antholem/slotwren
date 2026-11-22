@@ -7,11 +7,15 @@ import { err, ok, type Result } from "@/lib/result";
 import { getDashboardContext } from "@/server/auth/dashboard";
 import {
   type BookingError,
+  type CancelledBookings,
+  cancelBookingsForTeam,
   createBooking,
   type FreeStaff,
   freeStaffFor,
   type MemberSlot,
   memberSlots,
+  type RecordedOutcomes,
+  recordOutcomes,
   rescheduleBooking,
 } from "@/server/booking/service";
 import {
@@ -30,7 +34,13 @@ import {
 
 async function actor() {
   const { claims, business, role } = await getDashboardContext();
-  return { claims, businessId: business.id, role, timezone: business.timezone };
+  return {
+    claims,
+    businessId: business.id,
+    role,
+    timezone: business.timezone,
+    businessName: business.name,
+  };
 }
 
 /** Times the team may book on a business-local date. */
@@ -89,4 +99,37 @@ export async function rescheduleAction(
   if (!result.ok) return result;
   refresh();
   return ok({ startsAt: result.data.startsAt, staffId: result.data.staffId });
+}
+
+const idsSchema = z.array(z.uuid()).min(1).max(100);
+
+/** Bookings table: mark the selected bookings completed or no-show, in one go. */
+export async function bulkOutcomeAction(
+  bookingIds: unknown,
+  outcome: unknown,
+): Promise<Result<RecordedOutcomes, BookingError>> {
+  const ids = idsSchema.safeParse(bookingIds);
+  if (!ids.success) return err("invalid_input", "Select up to 100 bookings.");
+  const result = await recordOutcomes(await actor(), ids.data, { outcome });
+  if (result.ok) refresh();
+  return result;
+}
+
+/** Bookings table: cancel the selected bookings and email each customer. */
+export async function bulkCancelAction(
+  bookingIds: unknown,
+): Promise<Result<CancelledBookings, BookingError>> {
+  const ids = idsSchema.safeParse(bookingIds);
+  if (!ids.success) return err("invalid_input", "Select up to 100 bookings.");
+  const me = await actor();
+  const result = await cancelBookingsForTeam(
+    me,
+    ids.data,
+    { reason: null },
+    {
+      customerMessage: `Sorry, ${me.businessName} had to cancel this appointment. Book another time that suits you.`,
+    },
+  );
+  if (result.ok) refresh();
+  return result;
 }

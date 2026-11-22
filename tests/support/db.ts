@@ -116,3 +116,22 @@ export async function issueManageToken(
   });
   return token;
 }
+
+/**
+ * How many queries the app's database client runs during `fn` (its own
+ * transaction plumbing included). For N+1 checks: the count must not grow
+ * with the number of rows.
+ */
+export async function countQueries<T>(
+  fn: () => Promise<T>,
+): Promise<{ result: T; queries: number }> {
+  const { onQuery } = await import("@/server/db/client");
+  let queries = 0;
+  const stop = onQuery(() => queries++);
+  try {
+    const result = await fn();
+    return { result, queries };
+  } finally {
+    stop();
+  }
+}

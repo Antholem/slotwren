@@ -293,7 +293,7 @@ export function CalendarView({
           Add your team on the Staff page and their days appear here.
         </p>
       ) : (
-        <div className="overflow-x-auto rounded-xl border bg-card">
+        <div className="relative overflow-x-auto rounded-xl border bg-card">
           <div
             className="grid min-w-[44rem]"
             style={{

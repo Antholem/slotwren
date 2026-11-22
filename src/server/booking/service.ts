@@ -643,35 +643,83 @@ export async function recordOutcome(
   }
 
   try {
-    return await withMemberBookings(actor.claims, actor.businessId, async (store) => {
-      const { booking, visible } = await store.lockBooking(bookingId);
-      if (!booking) {
-        return visible
-          ? err("forbidden", BOOKING_MESSAGES.forbidden)
-          : err("not_found", BOOKING_MESSAGES.bookingGone);
+    return await withMemberBookings(actor.claims, actor.businessId, (store) =>
+      outcomeInStore(store, bookingId, outcome, now),
+    );
+  } catch (error) {
+    return settleError(error);
+  }
+}
+
+/** Mark one booking inside the caller's transaction. Refusals are values; nothing is written for them. */
+async function outcomeInStore(
+  store: BookingStore,
+  bookingId: string,
+  outcome: BookingOutcome,
+  now: Date,
+): Promise<Result<RecordedOutcome, BookingError>> {
+  const { booking, visible } = await store.lockBooking(bookingId);
+  if (!booking) {
+    return visible
+      ? err("forbidden", BOOKING_MESSAGES.forbidden)
+      : err("not_found", BOOKING_MESSAGES.bookingGone);
+  }
+  if (booking.status === outcome) return ok({ id: booking.id, status: outcome });
+  if (booking.status === "cancelled") return err("not_active", BOOKING_MESSAGES.notActive);
+  if (booking.status !== "pending" && booking.status !== "confirmed") {
+    return err("not_active", BOOKING_MESSAGES.alreadyMarked);
+  }
+  if (now.getTime() < booking.startsAt.getTime()) {
+    return err("too_early", BOOKING_MESSAGES.tooEarly);
+  }
+  if (!(await store.setOutcome(booking.id, outcome))) {
+    return err("forbidden", BOOKING_MESSAGES.forbidden);
+  }
+  await store.addEvent({
+    bookingId: booking.id,
+    type: outcome,
+    actor: "staff",
+    data: { from: booking.status },
+  });
+  return ok({ id: booking.id, status: outcome });
+}
+
+export type RecordedOutcomes = {
+  /** Marked now, or already marked that way. */
+  marked: number;
+  /** Not started yet, cancelled, marked the other way, or not this member's. */
+  skipped: number;
+};
+
+/**
+ * Mark several bookings at once (the Bookings table's bulk actions): one
+ * transaction, the same rules as recordOutcome for each. Those that can't
+ * be marked are counted and left alone.
+ */
+export async function recordOutcomes(
+  actor: Actor,
+  bookingIds: string[],
+  input: unknown,
+  { now = new Date() }: { now?: Date } = {},
+): Promise<Result<RecordedOutcomes, BookingError>> {
+  const parsed = outcomeSchema.safeParse(input);
+  if (!parsed.success) return invalid(parsed.error);
+  const distinct = [...new Set(bookingIds)];
+  const ids = distinct.filter((id) => z.uuid().safeParse(id).success);
+  let skipped = distinct.length - ids.length;
+  let marked = 0;
+  try {
+    await withMemberBookings(actor.claims, actor.businessId, async (store) => {
+      for (const id of ids) {
+        const result = await outcomeInStore(store, id, parsed.data.outcome, now);
+        if (result.ok) marked++;
+        else skipped++;
       }
-      if (booking.status === outcome) return ok({ id: booking.id, status: outcome });
-      if (booking.status === "cancelled") return err("not_active", BOOKING_MESSAGES.notActive);
-      if (booking.status !== "pending" && booking.status !== "confirmed") {
-        return err("not_active", BOOKING_MESSAGES.alreadyMarked);
-      }
-      if (now.getTime() < booking.startsAt.getTime()) {
-        return err("too_early", BOOKING_MESSAGES.tooEarly);
-      }
-      if (!(await store.setOutcome(booking.id, outcome))) {
-        throw new Rollback(err("forbidden", BOOKING_MESSAGES.forbidden));
-      }
-      await store.addEvent({
-        bookingId: booking.id,
-        type: outcome,
-        actor: "staff",
-        data: { from: booking.status },
-      });
-      return ok({ id: booking.id, status: outcome });
     });
   } catch (error) {
     return settleError(error);
   }
+  return ok({ marked, skipped });
 }
 
 // ── member reads: what the team may book ──────────────────────────────

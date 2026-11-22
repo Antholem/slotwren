@@ -5,7 +5,7 @@ import { Sidebar } from "@/components/dashboard/sidebar";
 import { TopBar, TopBarSkeleton } from "@/components/dashboard/top-bar";
 import { getDashboardContext } from "@/server/auth/dashboard";
 
-import { saveProfileAction, switchBusiness } from "./actions";
+import { paletteSearchAction, saveProfileAction, switchBusiness } from "./actions";
 
 /**
  * Owner dashboard shell (docs/design/owner-dashboard/shell-*): sidebar on
@@ -39,6 +39,8 @@ async function DashboardTopBar() {
       profileName={profileName}
       switchBusiness={switchBusiness}
       saveProfile={saveProfileAction}
+      search={paletteSearchAction}
+      timezone={business.timezone}
     />
   );
 }

@@ -20,10 +20,29 @@ import * as schema from "./schema";
  *   ./admin.ts, which require a businessId by type.
  */
 
+type QueryListener = (query: string) => void;
+const queryListeners = new Set<QueryListener>();
+
+/**
+ * Tests: hear every query the app runs (N+1 checks count them). Returns the
+ * unsubscribe. Nothing listens in production, so it costs one Set lookup.
+ */
+export function onQuery(listener: QueryListener): () => void {
+  queryListeners.add(listener);
+  return () => queryListeners.delete(listener);
+}
+
 function createClient() {
   // prepare: false keeps it compatible with Supabase's transaction pooler.
   const connection = postgres(env.DATABASE_URL, { prepare: false });
-  return drizzle(connection, { schema });
+  return drizzle(connection, {
+    schema,
+    logger: {
+      logQuery(query) {
+        for (const listener of queryListeners) listener(query);
+      },
+    },
+  });
 }
 
 export type Database = ReturnType<typeof createClient>;

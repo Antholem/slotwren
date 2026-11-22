@@ -59,6 +59,11 @@ Postgres evaluates once per query, and the definer rights avoid recursing into t
   business, code, source, creator or AI conversation. Column grants
   can't tell owners from staff, so a trigger (`bookings_guard_price`, SQLSTATE 42501)
   lets only owners change `price_cents` (migration `20261110130331_booking_guards.sql`).
+- Customers' private `notes` are owners-only, though every member updates customers
+  (bookings fill in a phone or timezone). A trigger (`customers_guard_notes`, SQLSTATE 42501;
+  migration `20261122013747_customer_notes_guard.sql`) refuses a notes change from anyone but
+  an owner, and stamps `notes_updated_by` / `notes_updated_at` from the session, so "Edited by
+  Mia" can't be forged or rewritten without editing the notes.
 - `businesses.ai_enabled` is an owner **preference**, granted like the other settings. It
   is not an entitlement: an owner on the Free plan can switch it on. Before the AI runs
   (Phase 4) and wherever plans are enforced (Phase 5), the server checks the plan and

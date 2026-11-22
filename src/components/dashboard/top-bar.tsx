@@ -22,6 +22,7 @@ import { initialsOf } from "@/lib/color";
 import { saveThemePreference, type ThemePreference } from "@/lib/theme";
 import { cn } from "@/lib/utils";
 
+import { CommandPalette, type PaletteSearch } from "./command-palette";
 import { NavList } from "./nav-list";
 import { ProfileDialog, type SaveProfile } from "./profile-dialog";
 import { titleFor } from "./nav-items";
@@ -35,6 +36,9 @@ export type TopBarProps = {
   profileName: string | null;
   switchBusiness: (businessId: string) => Promise<void>;
   saveProfile: SaveProfile;
+  /** ⌘K search in the current business, and its timezone for booking times. */
+  search: PaletteSearch;
+  timezone: string;
 };
 
 const focusRing = "focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none";
@@ -77,7 +81,9 @@ export function TopBar(props: TopBarProps) {
 
       {/* Desktop: business switcher */}
       <BusinessSwitcher {...props} className="hidden lg:flex" />
-      <div className="hidden flex-1 lg:block" />
+      <div className="flex lg:flex-1 lg:px-2">
+        <CommandPalette search={props.search} zone={props.timezone} />
+      </div>
 
       <UserMenu
         role={props.role}
