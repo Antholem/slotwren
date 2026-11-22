@@ -29,7 +29,7 @@ export const NAV_ITEMS: NavItem[] = [
   { label: "Services", icon: Scissors, href: "/app/services" },
   { label: "Staff", icon: User, href: "/app/staff" },
   { label: "AI receptionist", icon: Sparkle, href: null },
-  { label: "Insights", icon: ChartLine, href: null },
+  { label: "Insights", icon: ChartLine, href: "/app/insights" },
   { label: "Settings", icon: Settings, href: "/app/settings" },
 ];
 
