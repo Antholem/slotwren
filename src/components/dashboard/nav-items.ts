@@ -24,8 +24,8 @@ export type NavItem = {
 export const NAV_ITEMS: NavItem[] = [
   { label: "Today", icon: House, href: "/app", match: ["/app/live"] },
   { label: "Calendar", icon: Calendar, href: "/app/calendar" },
-  { label: "Bookings", icon: ClipboardList, href: null },
-  { label: "Customers", icon: Users, href: null },
+  { label: "Bookings", icon: ClipboardList, href: "/app/bookings" },
+  { label: "Customers", icon: Users, href: "/app/customers" },
   { label: "Services", icon: Scissors, href: "/app/services" },
   { label: "Staff", icon: User, href: "/app/staff" },
   { label: "AI receptionist", icon: Sparkle, href: null },

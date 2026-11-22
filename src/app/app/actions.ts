@@ -12,6 +12,7 @@ import {
   type RecordedOutcome,
 } from "@/server/booking/service";
 import { saveProfileName } from "@/server/catalog/profile";
+import { type PaletteResults, paletteSearch } from "@/server/db/queries/customers";
 
 /** Business switcher: remember the choice if the user belongs to that business. */
 export async function switchBusiness(businessId: unknown) {
@@ -62,4 +63,12 @@ export async function cancelFromTodayAction(
   if (!result.ok) return result;
   refresh();
   return { ok: true, data: { notified: result.data.notified } };
+}
+
+/** ⌘K: customers and booking codes in the current business. */
+export async function paletteSearchAction(query: unknown): Promise<PaletteResults> {
+  const parsed = z.string().max(100).safeParse(query);
+  if (!parsed.success) return { customers: [], bookings: [] };
+  const { claims, business } = await getDashboardContext();
+  return paletteSearch(claims, business.id, parsed.data);
 }
