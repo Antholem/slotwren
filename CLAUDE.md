@@ -184,6 +184,13 @@ These are hard rules. If a task seems to need breaking one, stop and ask.
   confirmation page gets its token once from `bookAction` and keeps it in `sessionStorage`.
 - **Email** goes out from `booking/notify.ts` after a change commits, never inside the
   transaction, and never fails the booking. Templates in `src/emails` share `components/`.
+- **AI receptionist** (`/api/chat/[slug]`). The model comes from `getChatModel()`
+  (`server/ai/model.ts`; no key → 503, never a crash). The system prompt is built by the pure
+  `buildSystemPrompt()` from `getAiContext()`: one business's public data, all inside one
+  escaped `<business_data>` JSON block. The client sends only `{ conversationId?, text }`;
+  history is replayed from `ai_messages`, never taken from the request. Runs only when
+  `ai_enabled` **and** plan is Pro. Never log prompts, messages or keys. Tests use
+  `MockLanguageModelV4` (`ai/test`); CI has no AI keys.
 - **Commits.** Small, conventional (`feat(booking): …`, `fix(db): …`, `test: …`,
   `chore: …`, `docs: …`).
 
