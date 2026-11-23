@@ -784,4 +784,104 @@ describe("row level security", () => {
       );
     });
   });
+
+  // The chat writes transcripts as the server (adminDb); the team only reads them.
+  describe("AI receptionist: FAQs and transcripts", () => {
+    it.each([
+      ["owners", () => ownerA],
+      ["staff", () => staffA],
+    ])("%s read their own business's FAQs, conversations and messages", async (_who, member) => {
+      const [faqs, conversations, messages] = await withRls(member(), async (tx) => [
+        await tx.select().from(schema.faqs).where(eq(schema.faqs.businessId, a.business.id)),
+        await tx
+          .select()
+          .from(schema.aiConversations)
+          .where(eq(schema.aiConversations.businessId, a.business.id)),
+        await tx
+          .select()
+          .from(schema.aiMessages)
+          .where(eq(schema.aiMessages.businessId, a.business.id)),
+      ]);
+      expect(faqs).toHaveLength(1);
+      expect(conversations).toHaveLength(1);
+      expect(messages).toHaveLength(1);
+    });
+
+    it.each([
+      ["an owner", () => ownerA],
+      ["a staff member", () => staffA],
+    ])("%s can't write transcripts, even in their own business", async (_who, member) => {
+      const before = [
+        await snapshot("ai_conversations", a.business.id),
+        await snapshot("ai_messages", a.business.id),
+      ];
+      const [conversation] = await db
+        .select()
+        .from(schema.aiConversations)
+        .where(eq(schema.aiConversations.businessId, a.business.id));
+      const businessId = a.business.id;
+      const writes: ((tx: Transaction) => Promise<unknown>)[] = [
+        (tx) => tx.insert(schema.aiConversations).values({ businessId, channel: "page" }),
+        (tx) =>
+          tx
+            .update(schema.aiConversations)
+            .set({ outcome: "booked" })
+            .where(eq(schema.aiConversations.businessId, businessId)),
+        (tx) =>
+          tx
+            .delete(schema.aiConversations)
+            .where(eq(schema.aiConversations.businessId, businessId)),
+        (tx) =>
+          tx.insert(schema.aiMessages).values({
+            businessId,
+            conversationId: conversation!.id,
+            role: "assistant",
+            content: "Forged reply",
+          }),
+        (tx) =>
+          tx
+            .update(schema.aiMessages)
+            .set({ content: "Rewritten" })
+            .where(eq(schema.aiMessages.businessId, businessId)),
+        (tx) => tx.delete(schema.aiMessages).where(eq(schema.aiMessages.businessId, businessId)),
+      ];
+      for (const write of writes) {
+        expect(await outcome(member(), write)).toBe(INSUFFICIENT_PRIVILEGE);
+      }
+      expect([
+        await snapshot("ai_conversations", a.business.id),
+        await snapshot("ai_messages", a.business.id),
+      ]).toEqual(before);
+    });
+
+    it("only owners write FAQs", async () => {
+      const businessId = a.business.id;
+      expect(
+        await outcome(staffA, (tx) =>
+          tx.insert(schema.faqs).values({ businessId, question: "Staff Q", answer: "A" }),
+        ),
+      ).toBe(INSUFFICIENT_PRIVILEGE);
+      expect(
+        await affected(staffA, (tx) =>
+          tx
+            .update(schema.faqs)
+            .set({ answer: "Changed by staff" })
+            .where(eq(schema.faqs.businessId, businessId))
+            .returning(),
+        ),
+      ).toBe(0);
+
+      const [added] = await withRls(ownerA, (tx) =>
+        tx
+          .insert(schema.faqs)
+          .values({ businessId, question: "Owner Q", answer: "Owner A" })
+          .returning(),
+      );
+      expect(
+        await affected(ownerA, (tx) =>
+          tx.delete(schema.faqs).where(eq(schema.faqs.id, added!.id)).returning(),
+        ),
+      ).toBe(1);
+    });
+  });
 });

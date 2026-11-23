@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, eq, isNotNull } from "drizzle-orm";
+import { and, eq, isNotNull, sql } from "drizzle-orm";
 import { cache } from "react";
 
 import { tenantLookup } from "../../admin";
@@ -13,6 +13,12 @@ export type PublicBusiness = {
   name: string;
   logoUrl: string | null;
   brandColor: string;
+  /**
+   * The AI receptionist is on: the owner switched it on (`ai_enabled`) and the
+   * business is on Pro. `ai_enabled` alone is a preference, never proof of Pro
+   * (docs/adr/0002-rls-strategy.md). Only this boolean leaves the database.
+   */
+  aiEnabled: boolean;
 };
 
 /**
@@ -30,6 +36,7 @@ const lookupBySlug = tenantLookup(
         name: businesses.name,
         logoUrl: businesses.logoUrl,
         brandColor: businesses.brandColor,
+        aiEnabled: sql<boolean>`(${businesses.aiEnabled} and ${businesses.plan} = 'pro')`,
       })
       .from(businesses)
       .where(and(eq(businesses.slug, slug), isNotNull(businesses.onboardedAt)))

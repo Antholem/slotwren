@@ -6,8 +6,8 @@ import { Redis } from "@upstash/redis";
 import { env } from "@/env";
 
 /*
- * Rate limits on the public booking endpoints: slot lookups and booking
- * attempts, each counted per IP (one person or bot hammering) and per
+ * Rate limits on the public endpoints: slot lookups, booking attempts and AI
+ * chat messages, each counted per IP (one person or bot hammering) and per
  * business (many IPs at one page). Upstash in production; without its keys
  * (local dev) an in-memory counter, per server instance.
  *
@@ -24,10 +24,14 @@ export const LIMITS = {
   // room for a family, or a café sharing one IP.
   "book:ip": { limit: 15, windowSec: 600 },
   "book:business": { limit: 60, windowSec: 600 },
+  // AI receptionist: each message costs a model call. A person types one every
+  // few seconds at most; the per-business cap bounds spend if many IPs pile on.
+  "chat:ip": { limit: 20, windowSec: 60 },
+  "chat:business": { limit: 300, windowSec: 60 },
 } as const;
 
 export type LimitName = keyof typeof LIMITS;
-export type Action = "slots" | "book";
+export type Action = "slots" | "book" | "chat";
 
 export type Limiter = {
   check(name: LimitName, key: string, now: number): Promise<{ success: boolean; resetAt: number }>;
@@ -95,6 +99,8 @@ export const RATE_LIMIT_MESSAGES = {
   "book:ip": "That's a lot of booking attempts. Wait a few minutes, then try again.",
   "book:business":
     "This business is taking a lot of bookings right now. Try again in a few minutes.",
+  "chat:ip": "You're sending messages very quickly. Wait a moment, then try again.",
+  "chat:business": "The assistant is very busy right now. Wait a moment, then try again.",
 } as const satisfies Record<LimitName, string>;
 
 export type RateLimitResult =
