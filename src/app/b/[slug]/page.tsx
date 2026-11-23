@@ -4,6 +4,8 @@ import { connection } from "next/server";
 import { Suspense } from "react";
 
 import { BookingTopBar, BusinessIntro, PoweredBy } from "@/components/booking/booking-layout";
+import { ChatPreview } from "@/components/chat/chat-preview";
+import { env } from "@/env";
 import { DetailsStep } from "@/components/booking/details-step";
 import { ServiceStep } from "@/components/booking/service-step";
 import { StepHeading } from "@/components/booking/step-heading";
@@ -97,6 +99,9 @@ async function Booking({ params, searchParams }: PageProps<"/b/[slug]">) {
   const { slug } = await params;
   const data = await load(slug);
   if (!data) notFound();
+  // The test chat box (steps 4.1–4.2) behind a flag; the real chat UI is step 4.4.
+  const chatPreview =
+    env.AI_CHAT_PREVIEW === "1" && (await getPublicBusinessBySlug(slug))?.aiEnabled === true;
   const state = parseBookingState(await searchParams, data);
   await connection(); // "now" is per request
   const now = new Date();
@@ -182,6 +187,7 @@ async function Booking({ params, searchParams }: PageProps<"/b/[slug]">) {
       />
       {state.step === "service" && <BusinessIntro business={business} openToday={today} />}
       <main className="flex flex-1 flex-col">{step}</main>
+      {chatPreview && <ChatPreview slug={slug} businessName={business.name} />}
       <PoweredBy />
     </div>
   );
