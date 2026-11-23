@@ -4,6 +4,7 @@ import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { getNextOpenings, getPublicSlots } from "@/server/booking/public-slots";
+import { getAiContext } from "@/server/db/queries/public/ai-chat";
 import { getBookingConfirmation, getBookingPage } from "@/server/db/queries/public/booking-page";
 import { findBookingByManageToken } from "@/server/db/queries/public/bookings";
 import { getPublicBusinessBySlug } from "@/server/db/queries/public/business";
@@ -113,6 +114,7 @@ describe("public data", () => {
       name: fixture.business.name,
       logoUrl: null,
       brandColor: fixture.business.brandColor,
+      aiEnabled: false, // a boolean only: never the plan itself
     });
     expectNothingPrivate(business);
     expect(await getPublicBusinessBySlug("no-such-business-here")).toBeNull();
@@ -253,6 +255,64 @@ describe("public data", () => {
 
     it("has nothing for a business that doesn't exist", async () => {
       expect(await getBookingPage("00000000-0000-4000-8000-000000000000")).toBeNull();
+      expect(await getAiContext({ businessId: "00000000-0000-4000-8000-000000000000" })).toBeNull();
+    });
+
+    it("gives the AI receptionist the same bookable services and staff, hours, rules and FAQs only", async () => {
+      await db.insert(schema.faqs).values({
+        businessId: fixture.business.id,
+        question: "Is there parking?",
+        answer: "Yes, round the back.",
+      });
+      const context = await getAiContext({ businessId: fixture.business.id });
+      expect(context).toEqual({
+        business: {
+          name: fixture.business.name,
+          timezone: "Asia/Manila",
+          currency: "USD",
+          address: "12 Lumen Lane",
+          minNoticeMin: 120,
+          maxDaysAhead: 60,
+          slotIntervalMin: 30,
+          cancellationWindowHours: 24,
+          openingHours: [{ weekday: 2, start: "09:00", end: "18:00" }],
+        },
+        services: [
+          {
+            name: "Haircut",
+            description: null,
+            durationMin: 45,
+            priceCents: 3500,
+            staffNames: ["Mia"],
+          },
+        ],
+        staff: [
+          {
+            name: "Mia",
+            title: null,
+            hours: [0, 1, 2, 3, 4, 5, 6].map((weekday) => ({
+              weekday,
+              startTime: "09:00:00",
+              endTime: "17:00:00",
+            })),
+          },
+        ],
+        faqs: [{ question: "Is there parking?", answer: "Yes, round the back." }],
+      });
+      expectNothingPrivate(context);
+      const json = JSON.stringify(context);
+      for (const hidden of [
+        "+63 2 8000 0000",
+        "owner-private@",
+        "ownerNewBookingEmail",
+        "Ana Santos", // customers never reach the model
+        "Kai",
+        "Noor",
+        "Retired",
+        "Only Jonah did this",
+      ]) {
+        expect(json).not.toContain(hidden);
+      }
     });
 
     it("lists times with labels and staff IDs only", async () => {

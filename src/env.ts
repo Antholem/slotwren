@@ -44,9 +44,11 @@ const serverSchema = z
     DATABASE_URL: z.url(),
     SUPABASE_SECRET_KEY: z.string().min(1),
 
-    // AI receptionist
+    // AI receptionist. AI_MODEL defaults per provider (src/server/ai/model.ts).
     AI_PROVIDER: z.enum(["gemini", "anthropic"]).default("gemini"),
-    AI_MODEL: featureKey(),
+    AI_MODEL: z.string().min(1).max(100).optional(),
+    // "1" shows the plain test chat box on /b/[slug] (steps 4.1–4.2; the real chat UI is 4.4).
+    AI_CHAT_PREVIEW: z.enum(["0", "1"]).optional(),
     GOOGLE_GENERATIVE_AI_API_KEY: z.string().min(1).optional(),
     ANTHROPIC_API_KEY: z.string().min(1).optional(),
 
