@@ -4,6 +4,7 @@ import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { getNextOpenings, getPublicSlots } from "@/server/booking/public-slots";
+import { checkAvailability, listServices, lookUpBooking } from "@/server/ai/receptionist";
 import { getAiContext } from "@/server/db/queries/public/ai-chat";
 import { getBookingConfirmation, getBookingPage } from "@/server/db/queries/public/booking-page";
 import { findBookingByManageToken } from "@/server/db/queries/public/bookings";
@@ -553,6 +554,44 @@ describe("public data", () => {
       expect(before!.days["2026-11-05"]!.taken.map((t) => t.start)).toContain(own);
       const moving = await getPublicSlots({ ...window, excludeBookingId: bookingId });
       expect(moving!.days["2026-11-05"]!.available.map((t) => t.start)).toContain(own);
+    });
+  });
+
+  describe("AI receptionist read tools", () => {
+    it("return no contact details, notes or tokens, even for the customer's own booking", async () => {
+      const [booking] = await db
+        .insert(schema.bookings)
+        .values(
+          bookingValues(fixture, new Date("2030-03-05T02:00:00Z"), {
+            customerPhone: "+63 917 000 0000",
+            customerNotes: "PRIVATE NOTE booking",
+          }),
+        )
+        .returning();
+      const [conversation] = await db
+        .insert(schema.aiConversations)
+        .values({ businessId: fixture.business.id, channel: "page" })
+        .returning();
+      const scope = {
+        businessId: fixture.business.id,
+        conversationId: conversation!.id,
+        customerTimezone: "Asia/Manila",
+        now: new Date("2030-03-01T00:00:00Z"),
+      };
+      const own = await lookUpBooking(scope, {
+        code: booking!.code,
+        email: fixture.customer.email,
+      });
+      expect(own.status).toBe("found");
+      for (const output of [
+        own,
+        await lookUpBooking(scope, { code: booking!.code, email: "wrong@example.com" }),
+        await listServices(scope),
+        await checkAvailability(scope, { service: fixture.service.id, date: "2030-03-05" }),
+      ]) {
+        expectNothingPrivate(output);
+        expect(JSON.stringify(output)).not.toContain("+63 917");
+      }
     });
   });
 });
