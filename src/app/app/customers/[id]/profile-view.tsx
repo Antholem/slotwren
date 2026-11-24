@@ -1,6 +1,8 @@
 "use client";
 
 import { Lock, Mail, Phone, Sparkle } from "lucide-react";
+import type { Route } from "next";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useId, useState, useTransition } from "react";
 import { toast } from "sonner";
@@ -17,6 +19,7 @@ import type { CustomerBooking, CustomerProfile } from "@/server/db/queries/custo
 import { BookingDrawer } from "../../_booking/booking-drawer";
 import { BookingSheet } from "../../_booking/booking-sheet";
 import { SourceBadge, StaffName, StatusBadge } from "../../_booking/booking-ui";
+import { MarkAnsweredButton } from "../../ai/mark-answered";
 import { saveNotesAction } from "../actions";
 
 const focusRing = "focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none";
@@ -160,15 +163,26 @@ export function CustomerProfileView({
                 Question for the team
               </h2>
               <p className="text-body">&ldquo;{p.openQuestion.message}&rdquo;</p>
-              <p className="flex items-center gap-2 text-body-sm text-muted-foreground">
+              <p className="flex flex-wrap items-center gap-2 text-body-sm text-muted-foreground">
                 <Sparkle aria-hidden className="size-4" />
-                Passed on by the AI receptionist ·{" "}
+                From the AI chat · email not verified ·{" "}
                 {formatInZone(p.openQuestion.createdAt, zone, "d MMM")},{" "}
                 <span className="font-mono tabular-nums">{time(p.openQuestion.createdAt)}</span>
               </p>
-              <Button asChild className="h-11 w-fit px-5 text-label">
-                <a href={`mailto:${p.email}`}>Reply by email</a>
-              </Button>
+              <div className="flex flex-wrap items-center gap-3">
+                <Button asChild className="h-11 w-fit px-5 text-label">
+                  <a href={`mailto:${p.openQuestion.email}`}>Reply by email</a>
+                </Button>
+                {role === "owner" && <MarkAnsweredButton questionId={p.openQuestion.id} />}
+                {p.openQuestion.conversationId && (
+                  <Link
+                    href={`/app/ai?c=${p.openQuestion.conversationId}` as Route}
+                    className="inline-flex min-h-11 items-center text-label text-primary underline underline-offset-4 focus-visible:rounded focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+                  >
+                    Open the chat
+                  </Link>
+                )}
+              </div>
             </section>
           )}
         </div>
