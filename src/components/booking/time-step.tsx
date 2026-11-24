@@ -117,9 +117,12 @@ function TimeStepIn({
   const today = clock.parts(nowMs).date;
   // On the business's clock, like the slot engine (L4).
   const lastDate = lastBookableDate(new Date(nowMs), business, zone);
-  const inRange = (date: string | null) => (date && date >= today && date <= lastDate ? date : null);
+  const inRange = (date: string | null) =>
+    date && date >= today && date <= lastDate ? date : null;
   const requested = inRange(state.date);
-  const preferred = requested ? null : inRange(openAt ? clock.parts(Date.parse(openAt)).date : null);
+  const preferred = requested
+    ? null
+    : inRange(openAt ? clock.parts(Date.parse(openAt)).date : null);
   const weekStart = nextDate(
     today,
     7 * Math.floor(daysBetween(today, requested ?? preferred ?? today) / 7),
@@ -133,7 +136,9 @@ function TimeStepIn({
   // No day chosen yet: start on the first day with times this week.
   const selectedDate =
     requested ??
-    (isLoaded(week) && preferred && week.days[preferred]?.available.length ? preferred : undefined) ??
+    (isLoaded(week) && preferred && week.days[preferred]?.available.length
+      ? preferred
+      : undefined) ??
     (isLoaded(week) ? weekDates.find((date) => week.days[date]?.available.length) : undefined) ??
     preferred ??
     today;

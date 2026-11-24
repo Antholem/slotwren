@@ -4,6 +4,8 @@ import type { Route } from "next";
 import Link from "next/link";
 import { useSyncExternalStore } from "react";
 
+import { cn } from "@/lib/utils";
+
 /*
  * The manage link on the confirmation page. The token is returned once when
  * the booking is made and lives only in this tab (sessionStorage) and in the
@@ -31,7 +33,16 @@ function read(bookingId: string): string | null {
 const subscribe = () => () => {};
 
 /** `fallback`: what to say in another tab or browser, where the token isn't. */
-export function ManageLink({ bookingId, fallback }: { bookingId: string; fallback: string }) {
+export function ManageLink({
+  bookingId,
+  fallback,
+  className,
+}: {
+  bookingId: string;
+  fallback: string;
+  /** Replaces the confirmation page's centred, large link style. */
+  className?: string;
+}) {
   const token = useSyncExternalStore(
     subscribe,
     () => read(bookingId),
@@ -40,11 +51,14 @@ export function ManageLink({ bookingId, fallback }: { bookingId: string; fallbac
   return token ? (
     <Link
       href={`/m/${token}` as Route}
-      className="mx-auto inline-flex min-h-11 items-center text-title underline underline-offset-4 hover:no-underline"
+      className={
+        className ??
+        "mx-auto inline-flex min-h-11 items-center text-title underline underline-offset-4 hover:no-underline"
+      }
     >
       Manage booking
     </Link>
   ) : (
-    <p className="text-center text-body text-muted-foreground">{fallback}</p>
+    <p className={cn("text-body text-muted-foreground", !className && "text-center")}>{fallback}</p>
   );
 }
