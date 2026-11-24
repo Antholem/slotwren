@@ -1,5 +1,6 @@
 import {
   createUIMessageStreamResponse,
+  isStepCount,
   type ModelMessage,
   streamText,
   toUIMessageStream,
@@ -10,8 +11,10 @@ import { z } from "zod";
 
 import { type ChatErrorBody, type ChatMessage, MAX_MESSAGE_CHARS, MAX_TURNS } from "@/lib/chat";
 import { SLUG_PATTERN } from "@/lib/slug";
+import { isValidTimeZone } from "@/lib/timezones";
 import { getChatModel } from "@/server/ai/model";
 import { buildSystemPrompt } from "@/server/ai/prompt";
+import { receptionistTools } from "@/server/ai/tools";
 import {
   findConversation,
   getAiContext,
@@ -19,17 +22,21 @@ import {
   saveMessage,
   startConversation,
 } from "@/server/db/queries/public/ai-chat";
+import { listProposalOutcomes } from "@/server/db/queries/public/ai-proposals";
 import { getPublicBusinessBySlug } from "@/server/db/queries/public/business";
 import { clientIp, rateLimit } from "@/server/rate-limit";
 
 /*
- * POST /api/chat/<slug>  { conversationId?, text }
+ * POST /api/chat/<slug>  { conversationId?, text, timezone? }
  *
- * The AI receptionist (steps 4.1–4.2: grounded answers, no tools yet). Public,
- * no login. Streams an AI SDK UI message stream; the first chunk's metadata
+ * The AI receptionist. Public, no login. Grounded answers plus tools
+ * (src/server/ai/tools.ts) that read availability and the customer's own
+ * booking, and propose changes for a Confirm card; at most 6 steps a turn. Nothing is
+ * booked here: only /api/chat/<slug>/confirm does that, after the customer's tap. Streams an AI SDK UI message stream; the first chunk's metadata
  * carries the conversation id for the next request. The transcript lives in
  * ai_conversations / ai_messages and is replayed to the model from there, so
- * the client never supplies history. 404 when the business is unknown or its
+ * the client never supplies history. Tool calls and results are saved with the
+ * reply (ai_messages.parts) and replayed with it. 404 when the business is unknown or its
  * AI is off (or it isn't on Pro); 503 when no model is configured.
  *
  * Never logs prompts, messages or keys: errors are logged by name and message
@@ -41,7 +48,12 @@ const MAX_BODY_BYTES = 16 * 1024;
 const body = z.object({
   conversationId: z.uuid().optional(),
   text: z.string().trim().min(1),
+  // The customer's zone, for offered times. Unknown or junk: the business's.
+  timezone: z.string().max(64).refine(isValidTimeZone).optional().catch(undefined),
 });
+
+/** Model calls a turn may take: tool calls plus the final answer. */
+const MAX_STEPS = 6;
 
 const NO_STORE = { "Cache-Control": "no-store" };
 
@@ -118,23 +130,37 @@ export async function POST(request: Request, { params }: RouteContext<"/api/chat
   if (!context) return notFound();
 
   const conversationId = existing?.id ?? (await startConversation({ businessId, channel: "page" }));
-  const history = existing ? await loadTranscript({ businessId, conversationId }) : [];
+  const [history, proposals] = existing
+    ? await Promise.all([
+        loadTranscript({ businessId, conversationId }),
+        listProposalOutcomes({ businessId, conversationId }),
+      ])
+    : [[], []];
   await saveMessage({ businessId, conversationId, role: "user", content: text });
 
   const messages: ModelMessage[] = [...history, { role: "user", content: text }];
   const log = { businessId, conversationId, provider: chat.provider, model: chat.modelId };
+  const now = new Date();
+  const customerTimezone = parsed.data.timezone ?? context.business.timezone;
 
   const result = streamText({
     model: chat.model,
-    instructions: buildSystemPrompt(context, new Date()),
+    instructions: buildSystemPrompt(context, now, { customerTimezone, proposals }),
     messages,
+    // Bound to this business and conversation here, never by the model.
+    tools: receptionistTools({ businessId, conversationId, customerTimezone, now }),
+    stopWhen: isStepCount(MAX_STEPS),
     timeout: { totalMs: chat.timeoutMs },
     maxOutputTokens: 600,
     maxRetries: 1,
     onError: ({ error }) => console.error("[ai-chat] Model stream failed", log, describe(error)),
     onAbort: () => console.error("[ai-chat] Model timed out", log, `${chat.timeoutMs} ms`),
-    onEnd: async ({ text: reply, totalUsage }) => {
-      if (!reply.trim()) {
+    onEnd: async ({ steps, responseMessages, totalUsage }) => {
+      const reply = steps
+        .map((step) => step.text.trim())
+        .filter(Boolean)
+        .join("\n\n");
+      if (!reply && !steps.some((step) => step.toolCalls.length > 0)) {
         console.warn("[ai-chat] Empty reply", log);
         return;
       }
@@ -144,6 +170,8 @@ export async function POST(request: Request, { params }: RouteContext<"/api/chat
           conversationId,
           role: "assistant",
           content: reply,
+          // Text, tool calls and tool results, for the replay and the transcript.
+          parts: responseMessages,
           inputTokens: totalUsage.inputTokens,
           outputTokens: totalUsage.outputTokens,
         });

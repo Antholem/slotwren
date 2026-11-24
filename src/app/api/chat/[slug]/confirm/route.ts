@@ -1,0 +1,77 @@
+import { z } from "zod";
+
+import type { ConfirmFailure, ConfirmResponse } from "@/lib/chat";
+import { SLUG_PATTERN } from "@/lib/slug";
+import { confirmProposal } from "@/server/ai/confirm";
+import { getPublicBusinessBySlug } from "@/server/db/queries/public/business";
+import { clientIp, rateLimit } from "@/server/rate-limit";
+
+/*
+ * POST /api/chat/<slug>/confirm  { conversationId, proposalId }
+ *
+ * The customer tapped Confirm on the AI receptionist's card. The only door
+ * from a proposal to the booking service (src/server/ai/confirm.ts). Public,
+ * no login: the conversation id and proposal id (both random) are what tie the
+ * tap to the chat that made the proposal. Rate-limited like booking from the
+ * page.
+ *
+ * 200 confirmed (or already confirmed by an earlier tap) · 400 bad body ·
+ * 404 unknown business / AI off / unknown proposal · 409 slot taken (with fresh
+ * times) · 410 expired or used · 422 too late or no longer active · 429.
+ */
+
+const body = z.object({ conversationId: z.uuid(), proposalId: z.uuid() });
+
+const NO_STORE = { "Cache-Control": "no-store" };
+
+const STATUS: Record<ConfirmFailure["error"], number> = {
+  bad_request: 400,
+  not_found: 404,
+  slot_taken: 409,
+  expired: 410,
+  used: 410,
+  too_late: 422,
+  not_active: 422,
+  rate_limited: 429,
+};
+
+const respond = (result: ConfirmResponse, headers: Record<string, string> = {}) =>
+  Response.json(result, {
+    status: result.ok ? 200 : STATUS[result.error],
+    headers: { ...NO_STORE, ...headers },
+  });
+
+export async function POST(request: Request, { params }: RouteContext<"/api/chat/[slug]/confirm">) {
+  const { slug } = await params;
+  const business = SLUG_PATTERN.test(slug) ? await getPublicBusinessBySlug(slug) : null;
+  if (!business?.aiEnabled) return respond({ ok: false, error: "not_found", message: "Not found" });
+  const businessId = business.id;
+
+  const limited = await rateLimit("book", { ip: clientIp(request.headers), businessId });
+  if (!limited.ok) {
+    return respond(
+      { ok: false, error: "rate_limited", message: limited.message },
+      { "Retry-After": String(limited.retryAfterSec) },
+    );
+  }
+
+  const parsed = body.safeParse(await request.json().catch(() => null));
+  if (!parsed.success) {
+    return respond({ ok: false, error: "bad_request", message: "Missing booking request." });
+  }
+
+  try {
+    return respond(await confirmProposal({ businessId, ...parsed.data }));
+  } catch (error) {
+    // Never the request or the customer's details: ids and the error only.
+    console.error("[ai-confirm] Confirm failed", {
+      businessId,
+      proposalId: parsed.data.proposalId,
+      error: error instanceof Error ? `${error.name}: ${error.message}` : "Unknown error",
+    });
+    return Response.json(
+      { ok: false, error: "bad_request", message: "Something went wrong. Please try again." },
+      { status: 500, headers: NO_STORE },
+    );
+  }
+}
