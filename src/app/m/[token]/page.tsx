@@ -106,6 +106,7 @@ async function Manage({ params, searchParams }: PageProps<"/m/[token]">) {
         date={state.date}
         taken={state.taken}
         now={now.toISOString()}
+        startsAt={booking.startsAt.toISOString()}
       />
     );
   } else if (canChange && state.step === "confirm" && state.start) {

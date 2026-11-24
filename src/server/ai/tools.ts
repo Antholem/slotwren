@@ -7,6 +7,7 @@ import {
   checkAvailability,
   listServices,
   lookUpBooking,
+  offerHandoff,
   proposeBooking,
   proposeCancel,
   proposeReschedule,
@@ -74,14 +75,15 @@ export function receptionistTools(scope: ReceptionistScope) {
     proposeBooking: tool({
       description:
         "Propose a booking for the customer to confirm. Books nothing: the customer must tap " +
-        "Confirm on the card. Needs a time from checkAvailability plus the customer's name and email.",
+        "Confirm on the card. Needs a time from checkAvailability. Pass the customer's name and " +
+        "email only if they gave them; the card asks for anything missing.",
       inputSchema: z.object({
         service: serviceRef,
         staff: staffRef,
         startsAt,
-        name: z.string().trim().min(1).max(80).describe("The customer's name."),
-        email: z.string().trim().min(3).max(254).describe("The customer's email."),
-        phone: z.string().trim().max(40).optional().describe("Optional phone number."),
+        name: z.string().trim().max(80).optional().describe("The customer's name, if given."),
+        email: z.string().trim().max(254).optional().describe("The customer's email, if given."),
+        phone: z.string().trim().max(40).optional().describe("Phone number, if given."),
       }),
       execute: (input) => proposeBooking(scope, input),
     }),
@@ -91,6 +93,20 @@ export function receptionistTools(scope: ReceptionistScope) {
         "taps Confirm. Needs the code, the email and a time from checkAvailability.",
       inputSchema: z.object({ code, email, startsAt, staff: staffRef }),
       execute: (input) => proposeReschedule(scope, input),
+    }),
+    offerHandoff: tool({
+      description:
+        "Offer to pass a question you can't answer to the team. Shows the customer a short form " +
+        "(name, email, question); the team replies by email. Saves nothing itself.",
+      inputSchema: z.object({
+        question: z
+          .string()
+          .trim()
+          .min(1)
+          .max(500)
+          .describe("The customer's question, in their words."),
+      }),
+      execute: (input) => offerHandoff(input),
     }),
     proposeCancel: tool({
       description:

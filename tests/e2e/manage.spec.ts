@@ -79,9 +79,9 @@ test("book, open the manage link, reschedule, then cancel", async ({ page }) => 
   await expect(
     page.getByRole("heading", { level: 1, name: "Reschedule your booking" }),
   ).toBeAttached();
-  // The picker opens on the first day with free times, which is tomorrow for
-  // most of the day: go to the booking's own day (Manila, as the browser).
-  await page.goto(`${firstLink}?step=time&date=${zonedParts(new Date(start), "Asia/Manila").date}`);
+  // It opens on the booking's own day, even when an earlier day has times.
+  const ownDay = zonedParts(new Date(start), "Asia/Manila").date;
+  await expect(page.locator(`input[name="day"][value="${ownDay}"]`)).toBeChecked();
   await expect(timeChips(page).first()).toBeAttached();
   await expectNoAxeViolations(page);
   const values = await timeChips(page).evaluateAll((radios) =>

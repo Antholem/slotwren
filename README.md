@@ -87,7 +87,10 @@ pnpm ai:ask "Anything Saturday morning?" <conversationId>   # continue the same 
 
 It prints the reply, the conversation id and any tool calls. `AI_ASK_URL` (default
 `http://localhost:3000`) and `AI_ASK_SLUG` (default `lumen-studio`) point it elsewhere.
-Set `AI_CHAT_PREVIEW=1` to show a test chat box on the booking page.
+On the booking page, businesses with AI on and the Pro plan get an "Ask us anything" button
+(Lumen Studio has both). To work on the chat UI without a key, set `AI_PROVIDER=mock`: a
+scripted receptionist that checks times, proposes bookings and offers a hand-off, the same
+model Playwright uses. It is refused on Vercel Production.
 
 ## Tests
 

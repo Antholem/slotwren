@@ -9,15 +9,23 @@ import {
 } from "ai";
 import { z } from "zod";
 
-import { type ChatErrorBody, type ChatMessage, MAX_MESSAGE_CHARS, MAX_TURNS } from "@/lib/chat";
+import {
+  type ChatErrorBody,
+  type ChatHistory,
+  type ChatMessage,
+  MAX_MESSAGE_CHARS,
+  MAX_TURNS,
+} from "@/lib/chat";
 import { SLUG_PATTERN } from "@/lib/slug";
 import { isValidTimeZone } from "@/lib/timezones";
 import { getChatModel } from "@/server/ai/model";
+import { toChatMessages } from "@/server/ai/history";
 import { buildSystemPrompt } from "@/server/ai/prompt";
 import { receptionistTools } from "@/server/ai/tools";
 import {
   findConversation,
   getAiContext,
+  loadHistoryRows,
   loadTranscript,
   saveMessage,
   startConversation,
@@ -70,6 +78,35 @@ function describe(error: unknown) {
   return error instanceof Error ? `${error.name}: ${error.message}` : "Unknown error";
 }
 
+/**
+ * GET /api/chat/<slug>?conversationId=…  The conversation so far, for the chat
+ * after a page refresh (the browser keeps only the id, in sessionStorage).
+ * An unknown id, or another business's, is a 404.
+ */
+export async function GET(request: Request, { params }: RouteContext<"/api/chat/[slug]">) {
+  const { slug } = await params;
+  const business = SLUG_PATTERN.test(slug) ? await getPublicBusinessBySlug(slug) : null;
+  if (!business?.aiEnabled) return notFound();
+  const id = z.uuid().safeParse(new URL(request.url).searchParams.get("conversationId"));
+  if (!id.success) return notFound();
+  const limited = await rateLimit("slots", {
+    ip: clientIp(request.headers),
+    businessId: business.id,
+  });
+  if (!limited.ok) {
+    return refuse(429, "rate_limited", limited.message, {
+      "Retry-After": String(limited.retryAfterSec),
+    });
+  }
+  const existing = await findConversation({ businessId: business.id, conversationId: id.data });
+  if (!existing) return notFound();
+  const rows = await loadHistoryRows({ businessId: business.id, conversationId: existing.id });
+  return Response.json(
+    { conversationId: existing.id, messages: toChatMessages(rows) } satisfies ChatHistory,
+    { headers: NO_STORE },
+  );
+}
+
 export async function POST(request: Request, { params }: RouteContext<"/api/chat/[slug]">) {
   const { slug } = await params;
   const business = SLUG_PATTERN.test(slug) ? await getPublicBusinessBySlug(slug) : null;
@@ -105,7 +142,7 @@ export async function POST(request: Request, { params }: RouteContext<"/api/chat
     );
   }
 
-  const chat = getChatModel();
+  const chat = await getChatModel();
   if (!chat) {
     return refuse(
       503,
@@ -136,9 +173,12 @@ export async function POST(request: Request, { params }: RouteContext<"/api/chat
         listProposalOutcomes({ businessId, conversationId }),
       ])
     : [[], []];
-  await saveMessage({ businessId, conversationId, role: "user", content: text });
+  // Retry after a failed reply: the same message is already the last turn.
+  const last = history.at(-1);
+  const retry = last?.role === "user" && last.content === text;
+  if (!retry) await saveMessage({ businessId, conversationId, role: "user", content: text });
 
-  const messages: ModelMessage[] = [...history, { role: "user", content: text }];
+  const messages: ModelMessage[] = retry ? history : [...history, { role: "user", content: text }];
   const log = { businessId, conversationId, provider: chat.provider, model: chat.modelId };
   const now = new Date();
   const customerTimezone = parsed.data.timezone ?? context.business.timezone;
@@ -184,7 +224,8 @@ export async function POST(request: Request, { params }: RouteContext<"/api/chat
   void result.consumeStream();
 
   return createUIMessageStreamResponse({
-    headers: NO_STORE,
+    // The id in a header too, so the chat has it even when the reply fails.
+    headers: { ...NO_STORE, "X-Conversation-Id": conversationId },
     stream: toUIMessageStream<ToolSet, ChatMessage>({
       // A timeout arrives as an abort, which the chat would end silently: show it as an error.
       stream: result.stream.pipeThrough(

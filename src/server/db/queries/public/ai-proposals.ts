@@ -149,11 +149,14 @@ export const settleProposal = adminQuery(
       proposalId,
       state,
       bookingId,
+      customer,
       now,
     }: TenantScoped & {
       proposalId: string;
       state: "open" | "confirmed" | "failed";
       bookingId?: string;
+      /** A new booking: the details it was confirmed with (from the card). */
+      customer?: { name: string; email: string; phone: string | null };
       now: Date;
     },
   ): Promise<void> => {
@@ -163,6 +166,13 @@ export const settleProposal = adminQuery(
         state,
         settledAt: state === "open" ? null : now,
         ...(bookingId ? { bookingId } : {}),
+        ...(customer
+          ? {
+              customerName: customer.name,
+              customerEmail: customer.email,
+              customerPhone: customer.phone,
+            }
+          : {}),
       })
       .where(
         and(

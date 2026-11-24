@@ -73,6 +73,8 @@ jobs:
     timeout-minutes: 25
     env:
       SKIP_ENV_VALIDATION: "false"
+      # The AI receptionist's scripted model: CI has no AI keys.
+      AI_PROVIDER: mock
     steps:
       - uses: actions/checkout@v5
       - uses: pnpm/action-setup@v4

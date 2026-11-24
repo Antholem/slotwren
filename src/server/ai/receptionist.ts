@@ -2,7 +2,9 @@ import "server-only";
 
 import type { OfferedTime, ProposalCard } from "@/lib/chat";
 import { formatPrice } from "@/lib/money";
+import { formatInZone } from "@/lib/dates";
 import { nextDate, zonedInstant, zonedParts } from "@/lib/time-off";
+import { gmtOffset } from "@/lib/timezones";
 import { customerSchema } from "@/lib/validation/booking";
 import { findPublicSlot, getPublicSlots } from "@/server/booking/public-slots";
 import {
@@ -149,6 +151,8 @@ async function freeTimes(
   const offer = (chip: { start: string; staffId: string | null }): OfferedTime => ({
     startsAt: chip.start,
     when: whenLabel(new Date(chip.start), scope.customerTimezone),
+    day: formatInZone(new Date(chip.start), scope.customerTimezone, "EEE d MMM"),
+    time: formatInZone(new Date(chip.start), scope.customerTimezone, "HH:mm"),
     staff: staffName(p, chip.staffId ?? ""),
   });
   const all = Object.keys(slots.days)
@@ -258,6 +262,9 @@ function card(
     durationMin: Math.round((proposal.endsAt.getTime() - proposal.startsAt.getTime()) / 60_000),
     startsAt: proposal.startsAt.toISOString(),
     when: whenLabel(proposal.startsAt, scope.customerTimezone),
+    day: formatInZone(proposal.startsAt, scope.customerTimezone, "EEE d MMM"),
+    time: `${formatInZone(proposal.startsAt, scope.customerTimezone, "HH:mm")} – ${formatInZone(proposal.endsAt, scope.customerTimezone, "HH:mm")}`,
+    zone: gmtOffset(scope.customerTimezone, proposal.startsAt),
     previousWhen: extra.previousStart
       ? whenLabel(extra.previousStart, scope.customerTimezone)
       : null,
@@ -269,6 +276,7 @@ function card(
       // Only what the customer typed here: never a stored number for an existing booking.
       phone: proposal.kind === "book" ? proposal.customerPhone : null,
     },
+    cancellationWindowHours: p.business.cancellationWindowHours,
     expiresAt: proposal.expiresAt.toISOString(),
   };
 }
@@ -277,7 +285,9 @@ const proposed = (c: ProposalCard) => ({
   status: "proposed" as const,
   card: c,
   nextStep:
-    "Nothing has changed yet. The customer sees a card with these details; tell them to check it and tap Confirm.",
+    c.kind === "book" && (!c.customer.name || !c.customer.email)
+      ? "Nothing is booked yet. The customer sees a card with these details, adds their name and email there, and taps Confirm. Tell them to."
+      : "Nothing has changed yet. The customer sees a card with these details; tell them to check it and tap Confirm.",
 });
 
 /** Fresh times near `startsAt` (that business-local day, else the next opening). */
@@ -308,8 +318,8 @@ export async function proposeBooking(
     service: string;
     staff?: string;
     startsAt: string;
-    name: string;
-    email: string;
+    name?: string;
+    email?: string;
     phone?: string;
   },
 ) {
@@ -318,10 +328,11 @@ export async function proposeBooking(
   if (!service) return notFoundService(p);
   const staff = resolveStaff(p, service.id, input.staff);
   if (!staff) return { status: "not_found", message: "Nobody by that name does this service." };
-  const customer = customerSchema.safeParse({
-    name: input.name,
-    email: input.email,
-    phone: input.phone,
+  // Whatever the customer already gave; the card asks for the rest.
+  const customer = customerSchema.partial().safeParse({
+    name: input.name || undefined,
+    email: input.email || undefined,
+    phone: input.phone || undefined,
   });
   if (!customer.success) {
     return {
@@ -360,9 +371,9 @@ export async function proposeBooking(
       startsAt: found.slot.start,
       endsAt: found.slot.end,
       priceCents: found.context.service.priceCents,
-      customerName: customer.data.name,
-      customerEmail: customer.data.email,
-      customerPhone: customer.data.phone,
+      customerName: customer.data.name ?? null,
+      customerEmail: customer.data.email ?? null,
+      customerPhone: customer.data.phone ?? null,
       customerTimezone: scope.customerTimezone,
       expiresAt: new Date(scope.now.getTime() + PROPOSAL_TTL_MS),
     },
@@ -483,6 +494,18 @@ export async function proposeCancel(
     },
   });
   return proposed(card(proposal, p, scope, { service: booking.serviceName, code: booking.code }));
+}
+
+/**
+ * The receptionist isn't sure: the chat shows a "Message the team" form,
+ * prefilled with the question. Saves nothing; the customer sends the form.
+ */
+export function offerHandoff(input: { question: string }) {
+  return {
+    status: "handoff" as const,
+    question: input.question,
+    nextStep: "The customer sees a form to send this question to the team, who reply by email.",
+  };
 }
 
 export { alternativesNear, page as receptionistPage };

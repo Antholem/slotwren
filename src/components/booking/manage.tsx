@@ -48,6 +48,7 @@ export function ManageTimeStep({
   date,
   taken,
   now,
+  startsAt,
 }: {
   token: string;
   slug: string;
@@ -58,6 +59,8 @@ export function ManageTimeStep({
   date: string | null;
   taken: string | null;
   now: string;
+  /** The booking's current start (ISO): the picker opens on its day. */
+  startsAt: string;
 }) {
   const state: BookingState = {
     step: "time",
@@ -79,6 +82,7 @@ export function ManageTimeStep({
       manageToken={token}
       showProgress={false}
       hrefFor={(next) => manageHref(token, next)}
+      openAt={startsAt}
     />
   );
 }

@@ -471,6 +471,18 @@ describe("booking service", () => {
       expect(await activeAt(at("11:00"))).toHaveLength(1);
     });
 
+    it("never throws when many customers race for one slot (deadlocks are retried)", async () => {
+      // Simultaneous inserts into the exclusion index can deadlock (40P01);
+      // the loser is retried and refused like any other.
+      for (const time of ["13:00", "14:00", "15:00"]) {
+        const results = await Promise.all(Array.from({ length: 8 }, () => book(at(time))));
+        expect(results.filter((r) => r.ok)).toHaveLength(1);
+        for (const loser of results.filter((r) => !r.ok)) {
+          expect(["slot_taken", "slot_unavailable"]).toContain(loser.ok || loser.error.code);
+        }
+      }
+    });
+
     it('maps a clash only the constraint sees to "That time was just taken"', async () => {
       // Another booking ends at 10:45 with clean-up until 11:00, not yet committed.
       const hold = await holdConflict(bookingValues(a, at("10:00")));

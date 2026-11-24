@@ -254,6 +254,8 @@ describe("AI receptionist tools and Confirm", () => {
     expect(all.times[0]).toEqual({
       startsAt: at(day, "09:00").toISOString(),
       when: expect.stringMatching(/09:00 \(GMT\+8\)$/),
+      day: expect.stringMatching(/^\w{3} \d{1,2} \w{3}$/),
+      time: "09:00",
       staff: "Mia",
     });
     expect(morning.times.length).toBeGreaterThan(0);
