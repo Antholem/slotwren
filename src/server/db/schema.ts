@@ -510,6 +510,68 @@ export const aiMessages = pgTable(
   ],
 );
 
+// What the AI receptionist proposed: a booking, a reschedule or a cancellation,
+// exactly as the Confirm card shows it (slot, service, staff, customer, price
+// from the database). Nothing is booked until the customer taps Confirm, which
+// claims the proposal once (open → confirming → confirmed | failed) and calls
+// the booking service. Expires 10 minutes after it's made. Server-only: RLS on
+// with no policies (like manage_tokens); owners see proposals in transcripts.
+export const aiProposalKindEnum = pgEnum("ai_proposal_kind", ["book", "reschedule", "cancel"]);
+export const aiProposalStateEnum = pgEnum("ai_proposal_state", [
+  "open",
+  "confirming",
+  "confirmed",
+  "failed",
+]);
+
+export const aiProposals = pgTable(
+  "ai_proposals",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    businessId: businessId(),
+    conversationId: uuid("conversation_id").notNull(),
+    kind: aiProposalKindEnum("kind").notNull(),
+    state: aiProposalStateEnum("state").notNull().default("open"),
+    // Reschedule and cancel: the booking. Book: the booking it created, once confirmed.
+    bookingId: uuid("booking_id"),
+    serviceId: uuid("service_id").notNull(),
+    staffId: uuid("staff_id").notNull(),
+    // The customer said "anyone": a "just taken" offers times with anyone.
+    anyStaff: boolean("any_staff").notNull().default(false),
+    // The proposed slot (cancel: the booking's current one).
+    startsAt: tstz("starts_at").notNull(),
+    endsAt: tstz("ends_at").notNull(),
+    priceCents: integer("price_cents").notNull(),
+    customerName: text("customer_name").notNull(),
+    customerEmail: text("customer_email").notNull(),
+    customerPhone: text("customer_phone"),
+    customerTimezone: text("customer_timezone"),
+    expiresAt: tstz("expires_at").notNull(),
+    settledAt: tstz("settled_at"),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index().on(t.businessId, t.conversationId),
+    check("ai_proposals_range", sql`${t.endsAt} > ${t.startsAt}`),
+    foreignKey({
+      columns: [t.conversationId, t.businessId],
+      foreignColumns: [aiConversations.id, aiConversations.businessId],
+    }).onDelete("cascade"),
+    foreignKey({
+      columns: [t.bookingId, t.businessId],
+      foreignColumns: [bookings.id, bookings.businessId],
+    }).onDelete("cascade"),
+    foreignKey({
+      columns: [t.serviceId, t.businessId],
+      foreignColumns: [services.id, services.businessId],
+    }).onDelete("cascade"),
+    foreignKey({
+      columns: [t.staffId, t.businessId],
+      foreignColumns: [staff.id, staff.businessId],
+    }).onDelete("cascade"),
+  ],
+);
+
 // "Question for the team"
 export const handoffRequests = pgTable(
   "handoff_requests",

@@ -1,5 +1,6 @@
 import "server-only";
 
+import type { ModelMessage } from "ai";
 import { and, asc, count, eq, inArray, sql } from "drizzle-orm";
 
 import type { AiBusinessContext } from "@/server/ai/prompt";
@@ -142,16 +143,34 @@ export const startConversation = adminQuery(
   },
 );
 
-export type TranscriptTurn = { role: "user" | "assistant"; content: string };
+/**
+ * An assistant turn's `parts` hold the model's response messages (its text,
+ * tool calls and tool results, as the AI SDK returned them) so the next
+ * request replays the conversation exactly, tools included. Earlier rows hold
+ * a single text part; those replay as plain text.
+ */
+function isResponseMessages(parts: unknown): parts is ModelMessage[] {
+  return (
+    Array.isArray(parts) &&
+    parts.length > 0 &&
+    parts.every(
+      (p) =>
+        typeof p === "object" &&
+        p !== null &&
+        ((p as { role?: unknown }).role === "assistant" ||
+          (p as { role?: unknown }).role === "tool"),
+    )
+  );
+}
 
-/** The customer and assistant turns so far, oldest first. */
+/** The conversation so far as model messages, oldest first. */
 export const loadTranscript = adminQuery(
   async (
     db,
     { businessId, conversationId }: TenantScoped & { conversationId: string },
-  ): Promise<TranscriptTurn[]> => {
+  ): Promise<ModelMessage[]> => {
     const rows = await db
-      .select({ role: aiMessages.role, content: aiMessages.content })
+      .select({ role: aiMessages.role, content: aiMessages.content, parts: aiMessages.parts })
       .from(aiMessages)
       .where(
         and(
@@ -161,7 +180,11 @@ export const loadTranscript = adminQuery(
         ),
       )
       .orderBy(asc(aiMessages.createdAt), asc(aiMessages.id));
-    return rows as TranscriptTurn[];
+    return rows.flatMap((row): ModelMessage[] => {
+      if (row.role === "user") return [{ role: "user", content: row.content }];
+      if (isResponseMessages(row.parts)) return row.parts;
+      return [{ role: "assistant", content: row.content }];
+    });
   },
 );
 
@@ -174,12 +197,16 @@ export const saveMessage = adminQuery(
       conversationId,
       role,
       content,
+      parts,
       inputTokens,
       outputTokens,
     }: TenantScoped & {
       conversationId: string;
       role: "user" | "assistant";
+      /** Plain text, for previews and search. */
       content: string;
+      /** Default: one text part. Assistant turns: the model's response messages. */
+      parts?: unknown[];
       inputTokens?: number;
       outputTokens?: number;
     },
@@ -190,7 +217,7 @@ export const saveMessage = adminQuery(
         conversationId,
         role,
         content,
-        parts: [{ type: "text", text: content }],
+        parts: parts ?? [{ type: "text", text: content }],
         inputTokens,
         outputTokens,
       });

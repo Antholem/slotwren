@@ -3,6 +3,7 @@ import { randomBytes } from "node:crypto";
 import { expect, type Page, test } from "@playwright/test";
 import { eq } from "drizzle-orm";
 
+import { zonedParts } from "@/lib/time-off";
 import * as schema from "@/server/db/schema";
 
 import {
@@ -78,6 +79,9 @@ test("book, open the manage link, reschedule, then cancel", async ({ page }) => 
   await expect(
     page.getByRole("heading", { level: 1, name: "Reschedule your booking" }),
   ).toBeAttached();
+  // The picker opens on the first day with free times, which is tomorrow for
+  // most of the day: go to the booking's own day (Manila, as the browser).
+  await page.goto(`${firstLink}?step=time&date=${zonedParts(new Date(start), "Asia/Manila").date}`);
   await expect(timeChips(page).first()).toBeAttached();
   await expectNoAxeViolations(page);
   const values = await timeChips(page).evaluateAll((radios) =>

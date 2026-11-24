@@ -8,14 +8,102 @@ import { useId, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { type ChatErrorBody, type ChatMessage, MAX_MESSAGE_CHARS } from "@/lib/chat";
+import {
+  type ChatErrorBody,
+  type ChatMessage,
+  type ConfirmResponse,
+  MAX_MESSAGE_CHARS,
+  type ProposalCard,
+} from "@/lib/chat";
 
 /*
- * A plain chat box for trying the AI receptionist (steps 4.1–4.2), shown on
- * /b/[slug] only when AI_CHAT_PREVIEW=1. The real chat UI is step 4.4. The
- * browser keeps only the conversation id (in memory); the server holds the
- * transcript.
+ * A plain chat box for trying the AI receptionist, shown on /b/[slug] only
+ * when AI_CHAT_PREVIEW=1. The real chat UI (slot chips, styled cards) is step
+ * 4.4. The browser keeps only the conversation id (in memory); the server
+ * holds the transcript. Proposals show as a bare card whose Confirm button is
+ * the only thing that books.
  */
+
+/** A proposal from a propose* tool part, if this part is one. */
+function proposalOf(part: ChatMessage["parts"][number]): ProposalCard | null {
+  if (!part.type.startsWith("tool-propose") || !("state" in part)) return null;
+  if (part.state !== "output-available") return null;
+  const output = part.output as { status?: string; card?: ProposalCard } | undefined;
+  return output?.status === "proposed" && output.card ? output.card : null;
+}
+
+const VERB = { book: "Book", reschedule: "Move", cancel: "Cancel" } as const;
+
+function ConfirmCard({
+  slug,
+  conversationId,
+  card,
+}: {
+  slug: string;
+  conversationId: string | undefined;
+  card: ProposalCard;
+}) {
+  const [state, setState] = useState<"idle" | "sending" | "done" | "failed">("idle");
+  const [result, setResult] = useState<string | null>(null);
+
+  async function confirm() {
+    if (!conversationId || state === "sending" || state === "done") return;
+    setState("sending");
+    try {
+      const response = await fetch(`/api/chat/${slug}/confirm`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ conversationId, proposalId: card.proposalId }),
+      });
+      const body = (await response.json()) as ConfirmResponse;
+      setState(body.ok ? "done" : "failed");
+      setResult(
+        body.ok
+          ? body.message
+          : [
+              body.message,
+              ...(body.alternatives ?? []).map((a) => `${a.when} with ${a.staff}`),
+            ].join(" · "),
+      );
+    } catch {
+      setState("failed");
+      setResult("Sorry, something went wrong. Please try again.");
+    }
+  }
+
+  return (
+    <div className="rounded-xl border bg-background p-3 text-body-sm">
+      <p className="font-medium">
+        {VERB[card.kind]}: {card.service} with {card.staff}
+      </p>
+      <p className="font-mono tabular-nums">
+        {card.previousWhen ? `${card.previousWhen} → ` : ""}
+        {card.when} · {card.price}
+      </p>
+      <p>
+        {card.customer.name} · {card.customer.email}
+      </p>
+      <p className="text-muted-foreground">
+        Not {card.kind === "book" ? "booked" : "changed"} yet.
+      </p>
+      {result && (
+        <p role="status" className="mt-2">
+          {result}
+        </p>
+      )}
+      {state !== "done" && (
+        <Button
+          type="button"
+          onClick={confirm}
+          disabled={state === "sending" || !conversationId}
+          className="mt-2 h-11"
+        >
+          {state === "sending" && <Loader2 aria-hidden className="animate-spin" />} Confirm
+        </Button>
+      )}
+    </div>
+  );
+}
 
 /** The `message` of a refused request, or a generic line. */
 function errorText(error: Error): string {
@@ -41,7 +129,8 @@ export function ChatPreview({ slug, businessName }: { slug: string; businessName
           const last = messages.at(-1);
           const text =
             last?.parts.map((part) => (part.type === "text" ? part.text : "")).join("") ?? "";
-          return { body: { conversationId: body?.conversationId, text } };
+          const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+          return { body: { conversationId: body?.conversationId, text, timezone } };
         },
       }),
   );
@@ -75,10 +164,25 @@ export function ChatPreview({ slug, businessName }: { slug: string; businessName
             </p>
           )}
           {messages.map((message) => (
-            <p key={message.id} className="text-body whitespace-pre-wrap">
-              <span className="font-medium">{message.role === "user" ? "You" : "Assistant"}: </span>
-              {message.parts.map((part) => (part.type === "text" ? part.text : "")).join("")}
-            </p>
+            <div key={message.id} className="space-y-2">
+              <p className="text-body whitespace-pre-wrap">
+                <span className="font-medium">
+                  {message.role === "user" ? "You" : "Assistant"}:{" "}
+                </span>
+                {message.parts.map((part) => (part.type === "text" ? part.text : "")).join("")}
+              </p>
+              {message.parts.map((part, i) => {
+                const card = proposalOf(part);
+                return card ? (
+                  <ConfirmCard
+                    key={card.proposalId ?? i}
+                    slug={slug}
+                    conversationId={conversationId ?? message.metadata?.conversationId}
+                    card={card}
+                  />
+                ) : null;
+              })}
+            </div>
           ))}
           {status === "submitted" && (
             <p className="flex items-center gap-2 text-body-sm text-muted-foreground">

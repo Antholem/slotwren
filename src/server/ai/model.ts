@@ -15,9 +15,12 @@ import { env, type ServerEnv } from "@/env";
 
 export type AiProvider = ServerEnv["AI_PROVIDER"];
 
-/** Used when AI_MODEL is unset. Gemini: the current free-tier Flash model. */
+/**
+ * Used when AI_MODEL is unset. Gemini: Flash-Lite, the free-tier model with the
+ * most requests a day (~500, vs ~20 for 3.8 Flash) that handles tool calls.
+ */
 export const DEFAULT_MODELS: Record<AiProvider, string> = {
-  gemini: "gemini-3.8-flash",
+  gemini: "gemini-3.5-flash-lite",
   anthropic: "claude-haiku-5-5",
 };
 

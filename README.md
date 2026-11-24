@@ -73,6 +73,22 @@ magic link arrives in the local mail viewer, Mailpit, at <http://127.0.0.1:54324
 other address signs up and starts the onboarding wizard. Google sign-in is optional; see
 [`docs/auth-setup.md`](docs/auth-setup.md).
 
+## AI receptionist
+
+The receptionist uses Gemini by default (`AI_PROVIDER=gemini`, model
+`gemini-3.5-flash-lite` unless `AI_MODEL` says otherwise). Add
+`GOOGLE_GENERATIVE_AI_API_KEY` to `.env.local` (free key from Google AI Studio); without
+it the chat answers 503. With the app running, ask it a question from the terminal:
+
+```bash
+pnpm ai:ask "How much is a haircut?"
+pnpm ai:ask "Anything Saturday morning?" <conversationId>   # continue the same chat
+```
+
+It prints the reply, the conversation id and any tool calls. `AI_ASK_URL` (default
+`http://localhost:3000`) and `AI_ASK_SLUG` (default `lumen-studio`) point it elsewhere.
+Set `AI_CHAT_PREVIEW=1` to show a test chat box on the booking page.
+
 ## Tests
 
 ```bash

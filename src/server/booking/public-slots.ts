@@ -6,7 +6,7 @@ import { zoneClock } from "@/lib/zone-clock";
 import type { SlotContext } from "@/server/db/queries/booking-store";
 import { withPublicBookings } from "@/server/db/queries/public/bookings";
 
-import { getSlotGrid, type Slot } from "./slots";
+import { getAvailableSlots, getSlotGrid, type Slot } from "./slots";
 
 /*
  * Availability for the public booking page, read through the same slot engine
@@ -161,4 +161,44 @@ export async function getNextOpenings({
   const ids = ["any", ...staffIds];
   const found = await firstOpening(businessId, serviceId, ids, now, now, timezone);
   return Object.fromEntries(ids.map((id) => [id, found.get(id)?.start.toISOString() ?? null]));
+}
+
+/**
+ * The slot starting exactly at `startsAt` that the booking page would offer
+ * right now (notice and booking window included), with its context: what the
+ * AI receptionist checks before it proposes a time. Null if it isn't offered.
+ * The booking service checks again at Confirm; the database has the last word.
+ */
+export async function findPublicSlot({
+  businessId,
+  serviceId,
+  staffId,
+  startsAt,
+  now = new Date(),
+  excludeBookingId,
+}: {
+  businessId: string;
+  serviceId: string;
+  staffId: string | "any";
+  startsAt: Date;
+  now?: Date;
+  excludeBookingId?: string;
+}): Promise<{ context: SlotContext; slot: Slot } | null> {
+  const ctx = await context(
+    businessId,
+    serviceId,
+    { from: startsAt, to: startsAt },
+    excludeBookingId,
+  );
+  if (!ctx) return null;
+  const [slot] = getAvailableSlots({
+    business: ctx.business,
+    service: ctx.service,
+    staff: ctx.staff,
+    staffId,
+    from: startsAt,
+    to: new Date(startsAt.getTime() + 1),
+    now,
+  });
+  return slot && slot.start.getTime() === startsAt.getTime() ? { context: ctx, slot } : null;
 }

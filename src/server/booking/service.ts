@@ -47,9 +47,16 @@ export type BookingChannel =
   | { kind: "public"; businessId: string; source: PublicSource; aiConversationId?: string | null }
   | { kind: "member"; actor: Actor };
 
-/** Who is changing a booking, and which one. */
+/**
+ * Who is changing a booking, and which one. `chat`: a customer in the AI
+ * receptionist who gave the booking code and email, then tapped Confirm (the
+ * confirm route re-checks both). Treated exactly like a manage-link customer:
+ * the cancellation window applies and their change retires older links.
+ */
 export type BookingAccess =
-  { kind: "customer"; manageToken: string } | { kind: "member"; actor: Actor; bookingId: string };
+  | { kind: "customer"; manageToken: string }
+  | { kind: "member"; actor: Actor; bookingId: string }
+  | { kind: "chat"; businessId: string; bookingId: string };
 
 export type BookingError =
   | "invalid_input"
@@ -349,6 +356,14 @@ async function open(access: BookingAccess, now: Date): Promise<Opened | null> {
       bookingId: access.bookingId,
       byCustomer: false,
       run: (work) => withMemberBookings(claims, businessId, work),
+    };
+  }
+  if (access.kind === "chat") {
+    if (!z.uuid().safeParse(access.bookingId).success) return null;
+    return {
+      bookingId: access.bookingId,
+      byCustomer: true,
+      run: (work) => withPublicBookings(access.businessId, work),
     };
   }
   if (typeof access.manageToken !== "string" || access.manageToken.length < 20) return null;

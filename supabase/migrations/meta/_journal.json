@@ -141,6 +141,20 @@
       "when": 1795328069697,
       "tag": "20261122061429_realtime_bookings",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1795512497882,
+      "tag": "20261124092817_ai_proposals",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1795512502302,
+      "tag": "20261124092822_ai_proposals_access",
+      "breakpoints": true
     }
   ]
 }

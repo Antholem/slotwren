@@ -13,7 +13,7 @@ describe("chatModelConfig", () => {
       modelId: DEFAULT_MODELS.gemini,
       apiKey: "g-key",
     });
-    expect(DEFAULT_MODELS.gemini).toBe("gemini-3.8-flash");
+    expect(DEFAULT_MODELS.gemini).toBe("gemini-3.5-flash-lite");
   });
 
   it("switches provider and model by config alone", () => {
