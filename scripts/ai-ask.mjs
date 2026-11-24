@@ -23,7 +23,12 @@ const res = await fetch(`${base}/api/chat/${slug}`, {
   method: "POST",
   // A documentation-range IP: its own rate-limit bucket, apart from the browser's.
   headers: { "content-type": "application/json", "x-forwarded-for": "192.0.2.50" },
-  body: JSON.stringify({ text, conversationId }),
+  // Offered times come back in this zone (the machine's, like a browser).
+  body: JSON.stringify({
+    text,
+    conversationId,
+    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+  }),
 });
 const raw = await res.text();
 if (!res.ok) {

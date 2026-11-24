@@ -71,7 +71,7 @@ src/
     m/[token]/           manage booking (reschedule / cancel)
     embed/[slug]/        iframe target for the widget
     api/slots/[slug]/    open and taken times for the booking page (customer timezone)
-    api/chat/[slug]/     AI receptionist (streaming)
+    api/chat/[slug]/     AI receptionist (streaming); confirm/ = the Confirm tap (only AI write path)
     api/webhooks/stripe/ billing webhooks
     api/inngest/         background jobs
   components/
@@ -91,7 +91,7 @@ src/
     booking/slots.ts     PURE slot engine
     booking/service.ts   the ONE booking write path
     booking/public-slots.ts  availability for the booking page (same engine and data)
-    ai/                  model.ts, prompt.ts, tools.ts
+    ai/                  model.ts, prompt.ts, tools.ts, receptionist.ts (tool logic), confirm.ts
     catalog/             services etc.: auth + validation + Result, behind server actions
     email/send.ts        sendEmail(): Resend, or logs the email when RESEND_API_KEY is unset
     auth/ billing/ jobs/ supabase/ rate-limit.ts
@@ -187,10 +187,19 @@ These are hard rules. If a task seems to need breaking one, stop and ask.
 - **AI receptionist** (`/api/chat/[slug]`). The model comes from `getChatModel()`
   (`server/ai/model.ts`; no key → 503, never a crash). The system prompt is built by the pure
   `buildSystemPrompt()` from `getAiContext()`: one business's public data, all inside one
-  escaped `<business_data>` JSON block. The client sends only `{ conversationId?, text }`;
-  history is replayed from `ai_messages`, never taken from the request. Runs only when
-  `ai_enabled` **and** plan is Pro. Never log prompts, messages or keys. Tests use
-  `MockLanguageModelV4` (`ai/test`); CI has no AI keys.
+  escaped `<business_data>` JSON block. The client sends only `{ conversationId?, text,
+timezone? }`; history (tool calls included, in `ai_messages.parts`) is replayed from the
+  database, never taken from the request. Runs only when `ai_enabled` **and** plan is Pro.
+  Never log prompts, messages or keys. Tests use `MockLanguageModelV4` (`ai/test`); CI has
+  no AI keys. Try it live with `pnpm ai:ask "<question>"`.
+- **AI tools** (`server/ai/tools.ts`, ADR 0005). Read: `listServices`, `checkAvailability`,
+  `lookUpBooking` (code **and** email). Propose: `proposeBooking`, `proposeReschedule`,
+  `proposeCancel` only insert an `ai_proposals` row (server-only, 10-minute expiry) for the
+  Confirm card. The scope (business, conversation, now, timezone) is bound by the route;
+  tool schemas never take a business, price or status. Only `POST /api/chat/[slug]/confirm`
+  writes: it claims the proposal once and calls `booking/service.ts` (source `ai`; changes use
+  the `chat` access kind, held to the cancellation window). What was confirmed reaches the
+  model through the prompt's "Booking status" section, built from `ai_proposals`.
 - **Commits.** Small, conventional (`feat(booking): …`, `fix(db): …`, `test: …`,
   `chore: …`, `docs: …`).
 
