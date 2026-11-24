@@ -1,6 +1,10 @@
 import "server-only";
 
-import type { ConfirmResponse } from "@/lib/chat";
+import type { ConfirmedCard, ConfirmRequest, ConfirmResponse } from "@/lib/chat";
+import { googleCalendarUrl } from "@/lib/calendar";
+import { formatInZone } from "@/lib/dates";
+import { customerSchema } from "@/lib/validation/booking";
+import { loadConfirmation } from "@/server/booking/confirmation";
 import {
   type BookingError,
   cancelBooking,
@@ -31,7 +35,10 @@ import { alternativesNear, receptionistPage } from "./receptionist";
  * - The booking service re-checks everything (slot, notice, cancellation
  *   window, status) with source "ai"; the exclusion constraint decides races,
  *   and "just taken" comes back with fresh times.
- * - The outcome goes into the transcript, so the receptionist knows next turn.
+ * - A new booking's card collects the name and email the chat didn't get;
+ *   they're validated here like the booking page's details step.
+ * - The outcome goes into the transcript, so the receptionist knows next turn
+ *   and the chat can show the booked card again after a refresh.
  */
 
 const WAIT_FOR_OTHER_TAP_MS = 8_000;
@@ -50,6 +57,7 @@ const MESSAGES = {
   expired: "This request has expired. Ask the assistant for the time again.",
   used: "This request was already used. Ask the assistant if you'd like to change anything.",
   busy: "We're still confirming this one. Give it a moment, then check the chat.",
+  details: "Add your name and email to book.",
   taken: "That time was just taken. Here are other times you can pick instead.",
   takenNoAlternatives: "That time was just taken, and nothing else is free that day.",
 } as const;
@@ -87,6 +95,7 @@ async function unclaimed(
         code: (await bookingCode({ businessId, bookingId: settled.bookingId })) ?? "",
         manageToken: null,
         message: "Already confirmed.",
+        card: null,
       };
     }
     if (settled.state === "confirming") return fail("used", MESSAGES.busy);
@@ -98,8 +107,10 @@ async function unclaimed(
   return fail("used", MESSAGES.used);
 }
 
+type Customer = { name: string; email: string; phone: string | null };
+
 /** Run the proposal through the booking service. */
-async function apply(proposal: Proposal, now: Date) {
+async function apply(proposal: Proposal, customer: Customer | null, now: Date) {
   const { businessId } = proposal;
   if (proposal.kind === "book") {
     const result = await createBooking(
@@ -108,11 +119,7 @@ async function apply(proposal: Proposal, now: Date) {
         serviceId: proposal.serviceId,
         staffId: proposal.staffId,
         startsAt: proposal.startsAt,
-        customer: {
-          name: proposal.customerName,
-          email: proposal.customerEmail,
-          phone: proposal.customerPhone,
-        },
+        customer,
         notes: null,
         customerTimezone: proposal.customerTimezone ?? undefined,
       },
@@ -160,23 +167,71 @@ const FAILURE_FOR: Record<BookingError, Failure["error"]> = {
   too_early: "bad_request",
 };
 
+/** The booked card: what, when, the code, and add-to-calendar links. */
+async function confirmedCard(
+  slug: string,
+  proposal: Proposal,
+  outcome: { bookingId: string; code: string },
+  names: { service: string; staff: string },
+  email: string | null,
+  zone: string,
+  windowHours: number,
+): Promise<ConfirmedCard> {
+  const calendar =
+    proposal.kind === "cancel" ? null : await loadConfirmation(slug, outcome.bookingId);
+  const freeUntil = new Date(proposal.startsAt.getTime() - windowHours * 3_600_000);
+  return {
+    kind: proposal.kind,
+    bookingId: outcome.bookingId,
+    code: outcome.code,
+    ...names,
+    day: formatInZone(proposal.startsAt, zone, "EEE d MMM"),
+    time: `${formatInZone(proposal.startsAt, zone, "HH:mm")} – ${formatInZone(proposal.endsAt, zone, "HH:mm")}`,
+    email,
+    freeUntil: windowHours > 0 && proposal.kind !== "cancel" ? whenLabel(freeUntil, zone) : null,
+    googleCalendarUrl: calendar ? googleCalendarUrl(calendar.event) : null,
+    icsPath: calendar ? `/b/${slug}/booked/${outcome.bookingId}/event.ics` : null,
+  };
+}
+
 export async function confirmProposal({
   businessId,
+  slug,
   conversationId,
   proposalId,
+  customer: typed,
   now = new Date(),
 }: {
   businessId: string;
+  /** The booking page the chat is on: the calendar links point at it. */
+  slug: string;
   conversationId: string;
   proposalId: string;
+  customer?: ConfirmRequest["customer"];
   now?: Date;
 }): Promise<ConfirmResponse> {
+  // The card's details, checked before the proposal is claimed.
+  const card = typed ? customerSchema.safeParse(typed) : null;
+  if (card && !card.success) {
+    return fail("bad_request", card.error.issues[0]?.message ?? MESSAGES.details);
+  }
   const proposal = await claimProposal({ businessId, conversationId, proposalId, now });
   if (!proposal) return unclaimed(businessId, conversationId, proposalId, now);
 
+  let customer: Customer | null = null;
+  if (proposal.kind === "book") {
+    const name = card?.data.name ?? proposal.customerName;
+    const email = card?.data.email ?? proposal.customerEmail;
+    if (!name || !email) {
+      await settleProposal({ businessId, proposalId, state: "open", now });
+      return fail("bad_request", MESSAGES.details);
+    }
+    customer = { name, email, phone: card ? card.data.phone : proposal.customerPhone };
+  }
+
   let outcome: Awaited<ReturnType<typeof apply>>;
   try {
-    outcome = await apply(proposal, now);
+    outcome = await apply(proposal, customer, now);
   } catch (error) {
     // Unexpected (the database went away): hand the proposal back for a retry.
     await settleProposal({ businessId, proposalId, state: "open", now });
@@ -195,6 +250,7 @@ export async function confirmProposal({
       proposalId,
       state: "confirmed",
       bookingId: outcome.bookingId,
+      customer: customer ?? undefined,
       now,
     });
     const message =
@@ -206,7 +262,16 @@ export async function confirmProposal({
     if (proposal.kind === "book") {
       await setConversationOutcome({ businessId, conversationId, outcome: "booked" });
     }
-    await record(proposal, message, { confirmed: true, code: outcome.code });
+    const booked = await confirmedCard(
+      slug,
+      proposal,
+      outcome,
+      { service, staff },
+      customer?.email ?? proposal.customerEmail,
+      zone,
+      page.business.cancellationWindowHours,
+    );
+    await record(proposal, message, { confirmed: true, card: booked });
     return {
       ok: true,
       kind: proposal.kind,
@@ -214,6 +279,7 @@ export async function confirmProposal({
       code: outcome.code,
       manageToken: outcome.manageToken,
       message,
+      card: booked,
     };
   }
 

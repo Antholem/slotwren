@@ -1,10 +1,10 @@
 import type { UIMessage } from "ai";
 
 /*
- * The AI receptionist's wire contract, shared by /api/chat/[slug] and the chat
- * UI. The client sends one message and the conversation id it was given; the
- * server keeps the transcript (and replays it to the model), so a client can't
- * rewrite earlier turns.
+ * The AI receptionist's wire contract, shared by /api/chat/[slug] (and its
+ * confirm and handoff routes) and the chat UI. The client sends one message
+ * and the conversation id it was given; the server keeps the transcript (and
+ * replays it to the model), so a client can't rewrite earlier turns.
  */
 
 /** Longest customer message, in characters. */
@@ -18,8 +18,6 @@ export type ChatRequest = { conversationId?: string; text: string; timezone?: st
 
 /** Sent with the first chunk of every reply: the id to send back next time. */
 export type ChatMetadata = { conversationId: string };
-
-export type ChatMessage = UIMessage<ChatMetadata>;
 
 /** The `{ error, message }` body of a refused request. */
 export type ChatErrorBody = {
@@ -39,6 +37,9 @@ export type OfferedTime = {
   startsAt: string;
   /** In the customer's timezone: "Sat 28 Nov, 10:00 (GMT+8)". */
   when: string;
+  /** "Sat 28 Nov" and "10:00", for chips. */
+  day: string;
+  time: string;
   staff: string;
 };
 
@@ -56,19 +57,51 @@ export type ProposalCard = {
   /** ISO instant of the (new) start. */
   startsAt: string;
   when: string;
+  /** "Sat 28 Nov", "10:00 – 10:45" and "GMT+8", in the customer's timezone. */
+  day: string;
+  time: string;
+  zone: string;
   /** Reschedule: the time it moves from. */
   previousWhen: string | null;
-  /** "$35.00", or "Free". */
+  /** "$35", or "Free". */
   price: string;
-  /** Cancel: the booking's code. */
+  /** Reschedule and cancel: the booking's code. */
   code: string | null;
-  customer: { name: string; email: string; phone: string | null };
+  /**
+   * What the chat already knows. A new booking's card lets the customer fill
+   * in or fix these before Confirm; a change shows the booking's own.
+   */
+  customer: { name: string | null; email: string | null; phone: string | null };
+  /** "Free cancellation up to 24 h before" (0: any time before it starts). */
+  cancellationWindowHours: number;
   /** ISO instant; after it, Confirm refuses and the customer asks again. */
   expiresAt: string;
 };
 
-/** POST /api/chat/[slug]/confirm */
-export type ConfirmRequest = { conversationId: string; proposalId: string };
+/** POST /api/chat/[slug]/confirm. `customer`: a new booking's details from the card. */
+export type ConfirmRequest = {
+  conversationId: string;
+  proposalId: string;
+  customer?: { name: string; email: string; phone?: string };
+};
+
+/** The booked (moved, cancelled) card, live after Confirm and from history after a refresh. */
+export type ConfirmedCard = {
+  kind: ProposalCard["kind"];
+  bookingId: string;
+  code: string;
+  service: string;
+  staff: string;
+  day: string;
+  time: string;
+  /** Where the confirmation went. */
+  email: string | null;
+  /** "Fri 27 Nov, 10:00 (GMT+8)", or null when changes are free until it starts. */
+  freeUntil: string | null;
+  /** Add to calendar (not for a cancellation). */
+  googleCalendarUrl: string | null;
+  icsPath: string | null;
+};
 
 export type ConfirmSuccess = {
   ok: true;
@@ -79,6 +112,7 @@ export type ConfirmSuccess = {
   manageToken: string | null;
   /** What the chat shows, and what the receptionist reads next turn. */
   message: string;
+  card: ConfirmedCard | null;
 };
 
 export type ConfirmFailure = {
@@ -98,3 +132,33 @@ export type ConfirmFailure = {
 };
 
 export type ConfirmResponse = ConfirmSuccess | ConfirmFailure;
+
+/** POST /api/chat/[slug]/handoff: a question for the team, answered by email. */
+export type HandoffRequest = {
+  conversationId: string;
+  name: string;
+  email: string;
+  message: string;
+};
+
+export type HandoffResponse =
+  | { ok: true; message: string }
+  | { ok: false; error: "not_found" | "bad_request" | "rate_limited"; message: string };
+
+/** Data parts stored with confirmations and hand-offs, shown again after a refresh. */
+export type ChatDataParts = {
+  confirmation: {
+    proposalId: string;
+    kind: ProposalCard["kind"];
+    confirmed: boolean;
+    card?: ConfirmedCard | null;
+    error?: ConfirmFailure["error"];
+    alternatives?: OfferedTime[];
+  };
+  handoff: { sent: true };
+};
+
+export type ChatMessage = UIMessage<ChatMetadata, ChatDataParts>;
+
+/** GET /api/chat/[slug]?conversationId=…: the conversation so far, for a refresh. */
+export type ChatHistory = { conversationId: string; messages: ChatMessage[] };

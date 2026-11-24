@@ -542,8 +542,9 @@ export const aiProposals = pgTable(
     startsAt: tstz("starts_at").notNull(),
     endsAt: tstz("ends_at").notNull(),
     priceCents: integer("price_cents").notNull(),
-    customerName: text("customer_name").notNull(),
-    customerEmail: text("customer_email").notNull(),
+    // A new booking's card asks for these when the chat didn't: set by Confirm.
+    customerName: text("customer_name"),
+    customerEmail: text("customer_email"),
     customerPhone: text("customer_phone"),
     customerTimezone: text("customer_timezone"),
     expiresAt: tstz("expires_at").notNull(),

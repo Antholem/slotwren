@@ -11,7 +11,9 @@ import {
   aiMessages,
   availabilityRules,
   businesses,
+  customers,
   faqs,
+  handoffRequests,
   services,
 } from "../../schema";
 import { getBookingPage } from "./booking-page";
@@ -229,4 +231,85 @@ export const saveMessage = adminQuery(
         );
     });
   },
+);
+
+/**
+ * "Message the team": an open question the owner sees on the customer's
+ * profile (step 3.6). The customer is found by email in this business, or
+ * created with what they typed; an existing customer's record is never
+ * changed from here (as on the booking page). Marks the chat handed off.
+ */
+export const saveHandoff = adminQuery(
+  async (
+    db,
+    {
+      businessId,
+      conversationId,
+      name,
+      email,
+      message,
+    }: TenantScoped & { conversationId: string; name: string; email: string; message: string },
+  ): Promise<void> => {
+    await db.transaction(async (tx) => {
+      const [existing] = await tx
+        .select({ id: customers.id })
+        .from(customers)
+        .where(
+          and(
+            eq(customers.businessId, businessId),
+            sql`lower(${customers.email}) = lower(${email})`,
+          ),
+        );
+      const customerId =
+        existing?.id ??
+        (
+          await tx
+            .insert(customers)
+            .values({ businessId, name, email })
+            .onConflictDoNothing()
+            .returning({ id: customers.id })
+        )[0]?.id ??
+        null;
+      await tx.insert(handoffRequests).values({
+        businessId,
+        conversationId,
+        customerId,
+        name,
+        email,
+        message,
+      });
+      await tx
+        .update(aiConversations)
+        .set({
+          outcome: "handed_off",
+          visitorName: name,
+          visitorEmail: email,
+          ...(customerId ? { customerId } : {}),
+        })
+        .where(
+          and(eq(aiConversations.id, conversationId), eq(aiConversations.businessId, businessId)),
+        );
+    });
+  },
+);
+
+/** Every customer and assistant row of a conversation, oldest first: the chat after a refresh. */
+export const loadHistoryRows = adminQuery(
+  async (db, { businessId, conversationId }: TenantScoped & { conversationId: string }) =>
+    db
+      .select({
+        id: aiMessages.id,
+        role: aiMessages.role,
+        content: aiMessages.content,
+        parts: aiMessages.parts,
+      })
+      .from(aiMessages)
+      .where(
+        and(
+          eq(aiMessages.businessId, businessId),
+          eq(aiMessages.conversationId, conversationId),
+          inArray(aiMessages.role, ["user", "assistant"]),
+        ),
+      )
+      .orderBy(asc(aiMessages.createdAt), asc(aiMessages.id)),
 );
