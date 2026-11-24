@@ -163,7 +163,9 @@ test("hand-off: the question reaches the customer's profile", async ({ page }) =
   const chat = await openChat(page, fixture.business.slug);
   const question = `Is there parking near you? ${randomBytes(3).toString("hex")}`;
   await ask(page, question);
-  await expect(chat.getByText("I'm not sure — I can pass this to the team.")).toBeVisible();
+  await expect(
+    chat.getByRole("log").getByText("I'm not sure — I can pass this to the team."),
+  ).toBeVisible();
   const form = chat.getByRole("form", { name: "Message the team" });
   await expect(form.getByLabel("Your question")).toHaveValue(question);
   await expectNoAxeViolations(page);
@@ -204,7 +206,7 @@ test("a failed reply and a timed-out one both come back with Retry", async ({ pa
     await expectNoAxeViolations(page);
     await alert.getByRole("button", { name: "Retry" }).click();
     await expect(
-      chat.getByText("Sorry about that. I'm here now: how can I help?").last(),
+      chat.getByRole("log").getByText("Sorry about that. I'm here now: how can I help?").last(),
     ).toBeVisible();
     await expect(chat.getByRole("alert")).toBeHidden();
   }
