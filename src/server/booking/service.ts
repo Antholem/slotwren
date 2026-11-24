@@ -184,6 +184,14 @@ function invalid(error: z.ZodError): Result<never, BookingError> {
   );
 }
 
+/**
+ * Two transactions inserting overlapping bookings at the same moment can each
+ * wait on the other's uncommitted row in the exclusion index, and Postgres
+ * aborts one with a deadlock (40P01) instead of 23P01. Run it again: the retry
+ * sees the winner's committed booking and is refused as "just taken".
+ */
+const isDeadlock = (error: unknown) => pgError(error).code === "40P01";
+
 /** Expected database refusals as values; anything else is a bug and throws. */
 function settleError(error: unknown): Result<never, BookingError> {
   if (error instanceof Rollback) return error.result;
@@ -318,6 +326,7 @@ export async function createBooking(
   };
 
   // Booking codes are random; on the rare clash with an existing one, retry.
+  // Likewise after a deadlock with a simultaneous booking (isDeadlock).
   for (let attempt = 1; ; attempt++) {
     try {
       const { created, summary } =
@@ -333,8 +342,25 @@ export async function createBooking(
       }
       return ok(created);
     } catch (error) {
-      if (attempt < 4 && isUniqueViolation(error, "bookings_business_code")) continue;
+      if (
+        attempt < 4 &&
+        (isUniqueViolation(error, "bookings_business_code") || isDeadlock(error))
+      ) {
+        continue;
+      }
       return settleError(error);
+    }
+  }
+}
+
+/** Run a transaction again (up to three times) when it lost a deadlock. */
+async function retryDeadlock<T>(run: () => Promise<T>): Promise<T> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await run();
+    } catch (error) {
+      if (attempt < 3 && isDeadlock(error)) continue;
+      throw error;
     }
   }
 }
@@ -420,57 +446,59 @@ export async function rescheduleBooking(
   if (!opened) return err("not_found", BOOKING_MESSAGES.bookingGone);
 
   try {
-    const result = await opened.run(async (store) => {
-      const booking = await lockForChange(store, opened, now);
-      const context = await store.loadSlotContext({
-        serviceId: booking.serviceId,
-        from: parsed.data.startsAt,
-        to: parsed.data.startsAt,
-        excludeBookingId: booking.id, // it may move into its own old time
-      });
-      if (!context) throw new Rollback(err("not_found", BOOKING_MESSAGES.bookingGone));
-      const slot = slotAt(context, {
-        staffId: parsed.data.staffId ?? booking.staffId,
-        startsAt: parsed.data.startsAt,
-        now,
-        member: !opened.byCustomer,
-      });
-      if (!slot) throw new Rollback(err("slot_unavailable", BOOKING_MESSAGES.unavailable));
+    const result = await retryDeadlock(() =>
+      opened.run(async (store) => {
+        const booking = await lockForChange(store, opened, now);
+        const context = await store.loadSlotContext({
+          serviceId: booking.serviceId,
+          from: parsed.data.startsAt,
+          to: parsed.data.startsAt,
+          excludeBookingId: booking.id, // it may move into its own old time
+        });
+        if (!context) throw new Rollback(err("not_found", BOOKING_MESSAGES.bookingGone));
+        const slot = slotAt(context, {
+          staffId: parsed.data.staffId ?? booking.staffId,
+          startsAt: parsed.data.startsAt,
+          now,
+          member: !opened.byCustomer,
+        });
+        if (!slot) throw new Rollback(err("slot_unavailable", BOOKING_MESSAGES.unavailable));
 
-      const manageToken = generateToken();
-      const updated = await store.moveBooking(booking.id, {
-        staffId: slot.staffId,
-        startsAt: slot.start,
-        endsAt: slot.end,
-        ...buffered(context, slot),
-      });
-      if (!updated) throw new Rollback(err("forbidden", BOOKING_MESSAGES.forbidden));
-      // A customer's own change retires every link they had: the email carries
-      // the only one. When the business moves it, earlier links keep working.
-      if (opened.byCustomer) await store.revokeManageTokens(booking.id, now);
-      await store.mintManageToken(booking.id, hashToken(manageToken), "rescheduled");
-      await store.addEvent({
-        bookingId: booking.id,
-        type: "rescheduled",
-        actor: opened.byCustomer ? "customer" : "staff",
-        data: {
-          from: { startsAt: booking.startsAt.toISOString(), staffId: booking.staffId },
-          to: { startsAt: slot.start.toISOString(), staffId: slot.staffId },
-        },
-      });
-      return {
-        moved: {
-          id: booking.id,
+        const manageToken = generateToken();
+        const updated = await store.moveBooking(booking.id, {
+          staffId: slot.staffId,
           startsAt: slot.start,
           endsAt: slot.end,
-          staffId: slot.staffId,
-          manageToken,
-        },
-        previousStart: booking.startsAt,
-        previousStaffId: booking.staffId,
-        summary: await store.summary(booking.id),
-      };
-    });
+          ...buffered(context, slot),
+        });
+        if (!updated) throw new Rollback(err("forbidden", BOOKING_MESSAGES.forbidden));
+        // A customer's own change retires every link they had: the email carries
+        // the only one. When the business moves it, earlier links keep working.
+        if (opened.byCustomer) await store.revokeManageTokens(booking.id, now);
+        await store.mintManageToken(booking.id, hashToken(manageToken), "rescheduled");
+        await store.addEvent({
+          bookingId: booking.id,
+          type: "rescheduled",
+          actor: opened.byCustomer ? "customer" : "staff",
+          data: {
+            from: { startsAt: booking.startsAt.toISOString(), staffId: booking.staffId },
+            to: { startsAt: slot.start.toISOString(), staffId: slot.staffId },
+          },
+        });
+        return {
+          moved: {
+            id: booking.id,
+            startsAt: slot.start,
+            endsAt: slot.end,
+            staffId: slot.staffId,
+            manageToken,
+          },
+          previousStart: booking.startsAt,
+          previousStaffId: booking.staffId,
+          summary: await store.summary(booking.id),
+        };
+      }),
+    );
     const { summary } = result;
     if (summary) {
       await afterResponse(async () => {
