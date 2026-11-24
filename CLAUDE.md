@@ -71,7 +71,7 @@ src/
     m/[token]/           manage booking (reschedule / cancel)
     embed/[slug]/        iframe target for the widget
     api/slots/[slug]/    open and taken times for the booking page (customer timezone)
-    api/chat/[slug]/     AI receptionist (streaming); confirm/ = the Confirm tap (only AI write path)
+    api/chat/[slug]/     AI receptionist: POST streams, GET = history; confirm/ (only AI write path), handoff/
     api/webhooks/stripe/ billing webhooks
     api/inngest/         background jobs
   components/
@@ -200,6 +200,14 @@ timezone? }`; history (tool calls included, in `ai_messages.parts`) is replayed 
   writes: it claims the proposal once and calls `booking/service.ts` (source `ai`; changes use
   the `chat` access kind, held to the cancellation window). What was confirmed reaches the
   model through the prompt's "Booking status" section, built from `ai_proposals`.
+- **Chat UI** (`components/chat/`). `chat-launcher.tsx` is the only chat code in the booking
+  page bundle; the panel loads with `next/dynamic` on first tap. Desktop: non-modal side
+  panel; phones: modal bottom sheet (Radix Dialog). The browser keeps only the conversation
+  id (`sessionStorage`); `GET /api/chat/[slug]?conversationId=` rebuilds the chat after a
+  refresh (`server/ai/history.ts`). Replies are announced once finished (one polite live
+  region). Confirm cards collect the name and email the chat didn't get. Hand-off:
+  `offerHandoff` shows a form; `POST /api/chat/[slug]/handoff` saves an open question on the
+  customer's profile. Playwright runs with `AI_PROVIDER=mock` (`server/ai/mock-model.ts`).
 - **Commits.** Small, conventional (`feat(booking): …`, `fix(db): …`, `test: …`,
   `chore: …`, `docs: …`).
 
