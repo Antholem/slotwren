@@ -59,6 +59,12 @@ type Props = {
   manageToken?: string;
   /** The four-step progress bar (off when rescheduling). */
   showProgress?: boolean;
+  /**
+   * Rescheduling: the booking's current start (ISO). With no day chosen, the
+   * picker opens on its day if that day still has times, else on the first
+   * day of that week that has some.
+   */
+  openAt?: string;
 };
 
 /**
@@ -102,6 +108,7 @@ function TimeStepIn({
   hrefFor = (next) => bookingHref(slug, next),
   manageToken,
   showProgress,
+  openAt,
 }: Props & { zone: string }) {
   const router = useRouter();
   const navigation = useStepNavigation();
@@ -110,8 +117,13 @@ function TimeStepIn({
   const today = clock.parts(nowMs).date;
   // On the business's clock, like the slot engine (L4).
   const lastDate = lastBookableDate(new Date(nowMs), business, zone);
-  const requested = state.date && state.date >= today && state.date <= lastDate ? state.date : null;
-  const weekStart = nextDate(today, 7 * Math.floor(daysBetween(today, requested ?? today) / 7));
+  const inRange = (date: string | null) => (date && date >= today && date <= lastDate ? date : null);
+  const requested = inRange(state.date);
+  const preferred = requested ? null : inRange(openAt ? clock.parts(Date.parse(openAt)).date : null);
+  const weekStart = nextDate(
+    today,
+    7 * Math.floor(daysBetween(today, requested ?? preferred ?? today) / 7),
+  );
   const weekDates = Array.from({ length: 7 }, (_, i) => nextDate(weekStart, i));
 
   // Weeks already loaded, so flicking back and forth doesn't refetch.
@@ -121,7 +133,9 @@ function TimeStepIn({
   // No day chosen yet: start on the first day with times this week.
   const selectedDate =
     requested ??
+    (isLoaded(week) && preferred && week.days[preferred]?.available.length ? preferred : undefined) ??
     (isLoaded(week) ? weekDates.find((date) => week.days[date]?.available.length) : undefined) ??
+    preferred ??
     today;
   useEffect(() => {
     if (week) return;

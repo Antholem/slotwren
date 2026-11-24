@@ -246,6 +246,14 @@ pnpm test:e2e --workers=1` (CI also uses one worker; the dev machine stalls Auth
   on Vercel Production at launch (Phase 5). When you add a feature key to `src/env.ts`,
   use `featureKey()` and mark it `(launch)` in `.env.example`.
 
+## Phase 5 notes
+
+- **The Stripe webhook must never downgrade a business that has no Stripe subscription.**
+  `plan` is a plain column: the demo business (Lumen Studio, `is_demo`) is Pro by seed, with
+  no Stripe customer, and its AI receptionist needs Pro. Only a business with a subscription
+  row may be set to `free` by a subscription event. Same for the nightly demo reset: it keeps
+  `plan = 'pro'`.
+
 ## Definition of done
 
 A task is done only when all of these hold:
