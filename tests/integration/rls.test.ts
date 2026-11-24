@@ -105,6 +105,19 @@ async function fillTenant(f: Fixture, startsAt: Date) {
   await db
     .insert(schema.aiMessages)
     .values({ businessId, conversationId: conversation!.id, role: "user", content: "Hi" });
+  await db.insert(schema.aiProposals).values({
+    businessId,
+    conversationId: conversation!.id,
+    kind: "book",
+    serviceId: f.service.id,
+    staffId: f.staff.id,
+    startsAt,
+    endsAt: new Date(startsAt.getTime() + f.service.durationMin * 60_000),
+    priceCents: f.service.priceCents,
+    customerName: "Ana",
+    customerEmail: `ana-${hex}@example.com`,
+    expiresAt: new Date(startsAt.getTime() - 60_000),
+  });
   await db
     .insert(schema.handoffRequests)
     .values({ businessId, name: "Ana", email: `ana-${hex}@example.com`, message: "Hello" });

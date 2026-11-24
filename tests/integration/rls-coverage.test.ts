@@ -20,6 +20,8 @@ const SERVER_ONLY_TABLES: Record<string, string> = {
   manage_tokens:
     "Manage-link token hashes; issued through private.mint_manage_token(), read by the server only",
   stripe_events: "Stripe webhook idempotency keys; written and read by the webhook only",
+  ai_proposals:
+    "AI receptionist proposals waiting for the customer to confirm; the chat and confirm routes only",
 };
 
 type TableInfo = {
