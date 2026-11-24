@@ -140,7 +140,14 @@ export type CustomerProfile = {
   /** Newest first for history; upcoming soonest first. */
   upcoming: CustomerBooking[];
   history: CustomerBooking[];
-  openQuestion: { message: string; createdAt: Date } | null;
+  /** The latest open question for the team from the AI chat (its email isn't verified). */
+  openQuestion: {
+    id: string;
+    message: string;
+    email: string;
+    createdAt: Date;
+    conversationId: string | null;
+  } | null;
 };
 
 /** One customer's profile in three queries, however many bookings they have. */
@@ -193,7 +200,13 @@ export async function getCustomerProfile(
       .orderBy(desc(bookings.startsAt));
 
     const [question] = await tx
-      .select({ message: handoffRequests.message, createdAt: handoffRequests.createdAt })
+      .select({
+        id: handoffRequests.id,
+        message: handoffRequests.message,
+        email: handoffRequests.email,
+        createdAt: handoffRequests.createdAt,
+        conversationId: handoffRequests.conversationId,
+      })
       .from(handoffRequests)
       .where(
         and(

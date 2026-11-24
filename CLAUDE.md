@@ -208,11 +208,22 @@ timezone? }`; history (tool calls included, in `ai_messages.parts`) is replayed 
   region). Confirm cards collect the name and email the chat didn't get. Hand-off:
   `offerHandoff` shows a form; `POST /api/chat/[slug]/handoff` saves an open question on the
   customer's profile. Playwright runs with `AI_PROVIDER=mock` (`server/ai/mock-model.ts`).
+- **AI dashboard** (`/app/ai`). Transcripts (filters, search, page and the open one `?c=` in
+  the URL, `lib/ai-transcripts.ts`), usage, the FAQ editor and the switch. Outcomes are
+  classified in SQL from what members may read (Confirm's `data-confirmation` parts in
+  `ai_messages`, hand-off questions), never from `ai_proposals` (server-only). Owners edit
+  FAQs, switch the receptionist (on needs Pro) and mark questions answered; staff read. With
+  it off, the chat routes answer 503 `ai_unavailable` and the open chat says so. Transcripts
+  are deleted 90 days after their last message (`server/ai/retention.ts`, daily Inngest job);
+  bookings, customers and questions stay.
 - **Commits.** Small, conventional (`feat(booking): …`, `fix(db): …`, `test: …`,
   `chore: …`, `docs: …`).
 
 ## Gotchas
 
+- Drizzle renders a column inside a raw `sql` fragment in a `select` **unqualified**
+  (`"id"`), so in a correlated subquery it binds to the inner table. Reference the outer
+  row with `sql.raw("table.column")` (see `outer` in `server/db/queries/ai.ts`).
 - Start local Supabase with `pnpm db:start`, not bare `supabase start`. The full stack
   fails its health checks on the dev machine (Docker has ~6 GB RAM), so the script skips
   analytics (logflare, vector), edge functions, image transforms and the pooler. Nothing

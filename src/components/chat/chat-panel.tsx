@@ -22,7 +22,7 @@ import type {
   OfferedTime,
   ProposalCard,
 } from "@/lib/chat";
-import { MAX_MESSAGE_CHARS } from "@/lib/chat";
+import { CHAT_OFF_MESSAGE, MAX_MESSAGE_CHARS } from "@/lib/chat";
 import { formatInZone } from "@/lib/dates";
 import { cn } from "@/lib/utils";
 
@@ -79,6 +79,16 @@ const textOf = (message: ChatMessage) =>
     .trim();
 
 /** The `message` of a refused request, or a generic line. */
+/** The receptionist was switched off (503 ai_unavailable). */
+function chatIsOff(error: Error | undefined): boolean {
+  if (!error) return false;
+  try {
+    return (JSON.parse(error.message) as Partial<ChatErrorBody>).error === "ai_unavailable";
+  } catch {
+    return false;
+  }
+}
+
 function errorText(error: Error): string {
   try {
     const body = JSON.parse(error.message) as Partial<ChatErrorBody>;
@@ -169,6 +179,9 @@ export function ChatPanel({
     onError: () => setAnnouncement("The reply failed. You can retry."),
   });
   const busy = status === "submitted" || status === "streaming";
+  // Switched off by the business: say so, keep the page's own booking flow.
+  const [offAtLoad, setOffAtLoad] = useState(false);
+  const off = offAtLoad || (status === "error" && chatIsOff(error));
 
   // After a refresh: the conversation so far, from the server.
   useEffect(() => {
@@ -179,6 +192,8 @@ export function ChatPanel({
         if (response.ok) {
           const body = (await response.json()) as ChatHistory;
           setMessages(body.messages);
+        } else if (response.status === 503) {
+          setOffAtLoad(true);
         } else if (response.status === 404) {
           forgetConversationId(slug);
           session.id = null;
@@ -202,7 +217,7 @@ export function ChatPanel({
 
   function send(text: string) {
     const trimmed = text.trim();
-    if (!trimmed || busy) return;
+    if (!trimmed || busy || off) return;
     void sendMessage({ text: trimmed });
   }
 
@@ -533,7 +548,12 @@ export function ChatPanel({
               ),
             )}
             {status === "submitted" && <TypingDots />}
-            {status === "error" && error && (
+            {off && (
+              <p role="status" className="rounded-2xl border bg-card px-4 py-3 text-body">
+                {CHAT_OFF_MESSAGE}
+              </p>
+            )}
+            {status === "error" && error && !off && (
               <div
                 role="alert"
                 className="flex flex-col gap-3 rounded-2xl border border-danger bg-card p-4"
@@ -572,7 +592,7 @@ export function ChatPanel({
               <Button
                 type="submit"
                 size="icon"
-                disabled={busy || !draft.trim()}
+                disabled={busy || off || !draft.trim()}
                 className="size-12 shrink-0 rounded-full"
               >
                 <SendHorizontal aria-hidden className="size-5" />

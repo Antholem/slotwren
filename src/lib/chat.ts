@@ -19,6 +19,10 @@ export type ChatRequest = { conversationId?: string; text: string; timezone?: st
 /** Sent with the first chunk of every reply: the id to send back next time. */
 export type ChatMetadata = { conversationId: string };
 
+/** What the chat says when the business has switched its receptionist off. */
+export const CHAT_OFF_MESSAGE =
+  "The chat is unavailable right now. You can still book on this page.";
+
 /** The `{ error, message }` body of a refused request. */
 export type ChatErrorBody = {
   error:

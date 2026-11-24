@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import type { HandoffResponse } from "@/lib/chat";
+import { CHAT_OFF_MESSAGE, type HandoffResponse } from "@/lib/chat";
 import { SLUG_PATTERN } from "@/lib/slug";
 import { customerSchema } from "@/lib/validation/booking";
 import { findConversation, saveHandoff, saveMessage } from "@/server/db/queries/public/ai-chat";
@@ -36,8 +36,9 @@ const respond = (result: HandoffResponse, status = result.ok ? 200 : 400) =>
 export async function POST(request: Request, { params }: RouteContext<"/api/chat/[slug]/handoff">) {
   const { slug } = await params;
   const business = SLUG_PATTERN.test(slug) ? await getPublicBusinessBySlug(slug) : null;
-  if (!business?.aiEnabled) {
-    return respond({ ok: false, error: "not_found", message: "Not found" }, 404);
+  if (!business) return respond({ ok: false, error: "not_found", message: "Not found" }, 404);
+  if (!business.aiEnabled) {
+    return respond({ ok: false, error: "not_found", message: CHAT_OFF_MESSAGE }, 404);
   }
   const businessId = business.id;
 

@@ -1,5 +1,6 @@
 import "server-only";
 
+import { purgeExpiredTranscripts } from "@/server/ai/retention";
 import { sendCancellationEmail } from "@/server/booking/cancellation-emails";
 import { sendReminder } from "@/server/booking/reminders";
 
@@ -61,4 +62,18 @@ export const cancellationEmails = inngest.createFunction(
   },
 );
 
-export const functions = [bookingReminder, cancellationEmails];
+/**
+ * Every night: delete AI transcripts whose last message is over 90 days old
+ * (src/server/ai/retention.ts). Bookings and customers stay.
+ */
+export const transcriptRetention = inngest.createFunction(
+  {
+    id: "ai-transcript-retention",
+    name: "AI transcript retention",
+    triggers: [{ cron: "TZ=UTC 30 3 * * *" }],
+    retries: 3,
+  },
+  async ({ step }) => step.run("delete-expired-transcripts", () => purgeExpiredTranscripts()),
+);
+
+export const functions = [bookingReminder, cancellationEmails, transcriptRetention];

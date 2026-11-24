@@ -10,6 +10,7 @@ import {
 import { z } from "zod";
 
 import {
+  CHAT_OFF_MESSAGE,
   type ChatErrorBody,
   type ChatHistory,
   type ChatMessage,
@@ -73,6 +74,17 @@ const refuse = (status: number, error: ChatErrorBody["error"], message: string, 
 
 const notFound = () => refuse(404, "not_found", "Not found");
 
+/** The business exists but its receptionist is off (or it isn't on Pro): say so politely. */
+const chatOff = () => refuse(503, "ai_unavailable", CHAT_OFF_MESSAGE);
+
+/** 404 for an unknown business, 503 when its chat is off, else the business. */
+async function chatBusiness(slug: string) {
+  const business = SLUG_PATTERN.test(slug) ? await getPublicBusinessBySlug(slug) : null;
+  if (!business) return { refused: notFound() } as const;
+  if (!business.aiEnabled) return { refused: chatOff() } as const;
+  return { business } as const;
+}
+
 /** An error as safe log fields: never the request body, which holds the prompt. */
 function describe(error: unknown) {
   return error instanceof Error ? `${error.name}: ${error.message}` : "Unknown error";
@@ -85,8 +97,9 @@ function describe(error: unknown) {
  */
 export async function GET(request: Request, { params }: RouteContext<"/api/chat/[slug]">) {
   const { slug } = await params;
-  const business = SLUG_PATTERN.test(slug) ? await getPublicBusinessBySlug(slug) : null;
-  if (!business?.aiEnabled) return notFound();
+  const found = await chatBusiness(slug);
+  if (found.refused) return found.refused;
+  const { business } = found;
   const id = z.uuid().safeParse(new URL(request.url).searchParams.get("conversationId"));
   if (!id.success) return notFound();
   const limited = await rateLimit("slots", {
@@ -109,8 +122,9 @@ export async function GET(request: Request, { params }: RouteContext<"/api/chat/
 
 export async function POST(request: Request, { params }: RouteContext<"/api/chat/[slug]">) {
   const { slug } = await params;
-  const business = SLUG_PATTERN.test(slug) ? await getPublicBusinessBySlug(slug) : null;
-  if (!business?.aiEnabled) return notFound();
+  const found = await chatBusiness(slug);
+  if (found.refused) return found.refused;
+  const { business } = found;
   const businessId = business.id;
 
   const limited = await rateLimit("chat", { ip: clientIp(request.headers), businessId });

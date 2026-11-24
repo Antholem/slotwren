@@ -28,7 +28,7 @@ export const NAV_ITEMS: NavItem[] = [
   { label: "Customers", icon: Users, href: "/app/customers" },
   { label: "Services", icon: Scissors, href: "/app/services" },
   { label: "Staff", icon: User, href: "/app/staff" },
-  { label: "AI receptionist", icon: Sparkle, href: null },
+  { label: "AI receptionist", icon: Sparkle, href: "/app/ai" },
   { label: "Insights", icon: ChartLine, href: "/app/insights" },
   { label: "Settings", icon: Settings, href: "/app/settings" },
 ];

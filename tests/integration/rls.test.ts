@@ -896,5 +896,57 @@ describe("row level security", () => {
         ),
       ).toBe(1);
     });
+
+    it("everyone reads the questions for the team; only owners mark them answered", async () => {
+      const businessId = a.business.id;
+      const read = (member: RlsClaims) =>
+        withRls(member, (tx) =>
+          tx
+            .select()
+            .from(schema.handoffRequests)
+            .where(eq(schema.handoffRequests.businessId, businessId)),
+        );
+      expect(await read(staffA)).toHaveLength(1);
+      expect(await read(ownerB).then((rows) => rows.length)).toBe(0);
+
+      const answer = (member: RlsClaims) =>
+        affected(member, (tx) =>
+          tx
+            .update(schema.handoffRequests)
+            .set({ status: "replied", repliedAt: new Date(), repliedBy: member.sub })
+            .where(eq(schema.handoffRequests.businessId, businessId))
+            .returning(),
+        );
+      expect(await answer(staffA)).toBe(0);
+      expect(await answer(ownerB)).toBe(0);
+      // Only the status columns: an owner can't rewrite what the customer asked.
+      expect(
+        await outcome(ownerA, (tx) =>
+          tx
+            .update(schema.handoffRequests)
+            .set({ message: "Rewritten" })
+            .where(eq(schema.handoffRequests.businessId, businessId)),
+        ),
+      ).toBe(INSUFFICIENT_PRIVILEGE);
+      expect(await answer(ownerA)).toBe(1);
+      await db
+        .update(schema.handoffRequests)
+        .set({ status: "open", repliedAt: null, repliedBy: null })
+        .where(eq(schema.handoffRequests.businessId, businessId));
+    });
+
+    it("only owners switch the receptionist on or off", async () => {
+      const toggle = (member: RlsClaims) =>
+        affected(member, (tx) =>
+          tx
+            .update(schema.businesses)
+            .set({ aiEnabled: false })
+            .where(eq(schema.businesses.id, a.business.id))
+            .returning(),
+        );
+      expect(await toggle(staffA)).toBe(0);
+      expect(await toggle(ownerB)).toBe(0);
+      expect(await toggle(ownerA)).toBe(1);
+    });
   });
 });

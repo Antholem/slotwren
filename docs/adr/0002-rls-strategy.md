@@ -31,7 +31,8 @@ links, AI chat, webhooks, jobs) use `adminDb`.
 | bookings                              | read                              | insert, update any            | insert, update own         |
 | booking_events                        | read, insert                      |                               | (append-only for everyone) |
 | ai_conversations, ai_messages         | read                              |                               |                            |
-| handoff_requests                      | read, update                      |                               |                            |
+| handoff_requests                      | read                              | mark answered (status only)   | since step 4.5             |
+| ai_proposals                          | no access                         | no access                     | server only                |
 | subscriptions                         |                                   | read                          |                            |
 | stripe_events                         | no access                         | no access                     |                            |
 | manage_tokens                         | no access (mint via function)     | no access (mint via function) |                            |

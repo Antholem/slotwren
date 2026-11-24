@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import type { ConfirmFailure, ConfirmResponse } from "@/lib/chat";
+import { CHAT_OFF_MESSAGE, type ConfirmFailure, type ConfirmResponse } from "@/lib/chat";
 import { SLUG_PATTERN } from "@/lib/slug";
 import { confirmProposal } from "@/server/ai/confirm";
 import { pgError } from "@/server/db/errors";
@@ -56,7 +56,11 @@ const respond = (result: ConfirmResponse, headers: Record<string, string> = {}) 
 export async function POST(request: Request, { params }: RouteContext<"/api/chat/[slug]/confirm">) {
   const { slug } = await params;
   const business = SLUG_PATTERN.test(slug) ? await getPublicBusinessBySlug(slug) : null;
-  if (!business?.aiEnabled) return respond({ ok: false, error: "not_found", message: "Not found" });
+  if (!business) return respond({ ok: false, error: "not_found", message: "Not found" });
+  // Switched off meanwhile: nothing more from the chat, and it says so.
+  if (!business.aiEnabled) {
+    return respond({ ok: false, error: "not_found", message: CHAT_OFF_MESSAGE });
+  }
   const businessId = business.id;
 
   const limited = await rateLimit("book", { ip: clientIp(request.headers), businessId });

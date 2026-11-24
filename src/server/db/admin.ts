@@ -36,7 +36,12 @@ export function adminQuery<Args extends TenantScoped, Result>(
  * deliberate, reviewable change.
  */
 export type TenantLookupKind =
-  "bySlug" | "byManageTokenHash" | "byInviteTokenHash" | "byStripeCustomerId";
+  | "bySlug"
+  | "byManageTokenHash"
+  | "byInviteTokenHash"
+  | "byStripeCustomerId"
+  // The transcript retention job: which businesses have transcripts to delete.
+  | "withExpiredTranscripts";
 
 export function tenantLookup<Args, Result>(
   _kind: TenantLookupKind,

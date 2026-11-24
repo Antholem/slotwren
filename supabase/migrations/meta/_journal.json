@@ -162,6 +162,13 @@
       "when": 1795519151789,
       "tag": "20261124111911_ai_proposals_customer_optional",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1795524577088,
+      "tag": "20261124124937_handoff_owner_answers",
+      "breakpoints": true
     }
   ]
 }
