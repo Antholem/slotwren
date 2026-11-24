@@ -45,10 +45,10 @@ const serverSchema = z
     SUPABASE_SECRET_KEY: z.string().min(1),
 
     // AI receptionist. AI_MODEL defaults per provider (src/server/ai/model.ts).
-    AI_PROVIDER: z.enum(["gemini", "anthropic"]).default("gemini"),
+    // "mock": a scripted, keyless model for Playwright and local UI work;
+    // refused on Vercel Production below.
+    AI_PROVIDER: z.enum(["gemini", "anthropic", "mock"]).default("gemini"),
     AI_MODEL: z.string().min(1).max(100).optional(),
-    // "1" shows the plain test chat box on /b/[slug] (steps 4.1–4.2; the real chat UI is 4.4).
-    AI_CHAT_PREVIEW: z.enum(["0", "1"]).optional(),
     GOOGLE_GENERATIVE_AI_API_KEY: z.string().min(1).optional(),
     ANTHROPIC_API_KEY: z.string().min(1).optional(),
 
@@ -86,6 +86,16 @@ const serverSchema = z
         message: "Must not be 1 in production (it turns off request signing)",
       });
     }
+    // The mock model answers from a script: never for real customers.
+    if (env.AI_PROVIDER === "mock" && env.VERCEL_ENV === "production") {
+      ctx.addIssue({
+        code: "custom",
+        path: ["AI_PROVIDER"],
+        message: "Must not be mock in production",
+      });
+      return;
+    }
+    if (env.AI_PROVIDER === "mock") return;
     const keyFor = {
       gemini: "GOOGLE_GENERATIVE_AI_API_KEY",
       anthropic: "ANTHROPIC_API_KEY",

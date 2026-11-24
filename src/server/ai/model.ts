@@ -22,6 +22,7 @@ export type AiProvider = ServerEnv["AI_PROVIDER"];
 export const DEFAULT_MODELS: Record<AiProvider, string> = {
   gemini: "gemini-3.5-flash-lite",
   anthropic: "claude-haiku-5-5",
+  mock: "mock-receptionist",
 };
 
 export type ChatModelConfig = { provider: AiProvider; modelId: string; apiKey: string };
@@ -34,6 +35,7 @@ export function chatModelConfig(
   >,
 ): ChatModelConfig | null {
   const provider = e.AI_PROVIDER;
+  if (provider === "mock") return { provider, modelId: DEFAULT_MODELS.mock, apiKey: "" };
   const apiKey = provider === "gemini" ? e.GOOGLE_GENERATIVE_AI_API_KEY : e.ANTHROPIC_API_KEY;
   if (!apiKey) return null;
   return { provider, modelId: e.AI_MODEL ?? DEFAULT_MODELS[provider], apiKey };
@@ -49,15 +51,22 @@ export type ChatModel = {
 
 /** A stalled provider ends in an error message, not an endless spinner. */
 export const CHAT_TIMEOUT_MS = 45_000;
+/** The mock's "[stall]" shouldn't keep a Playwright test waiting 45 s. */
+const MOCK_TIMEOUT_MS = 3_000;
 
 /**
  * The chat model, or null when AI isn't configured (no key): the chat route
  * answers 503 rather than failing mid-stream.
  */
-export function getChatModel(): ChatModel | null {
+export async function getChatModel(): Promise<ChatModel | null> {
   const config = chatModelConfig(env);
   if (!config) return null;
   const { provider, modelId, apiKey } = config;
+  if (provider === "mock") {
+    // Loaded only when asked for: real deploys never load the script.
+    const { mockReceptionistModel } = await import("./mock-model");
+    return { model: mockReceptionistModel(), provider, modelId, timeoutMs: MOCK_TIMEOUT_MS };
+  }
   // No thinking override: Gemini 3.x Flash defaults to "low" through the SDK,
   // and rejects "minimal" (it differs by model, so leave it to the provider).
   const model =
