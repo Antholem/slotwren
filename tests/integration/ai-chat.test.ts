@@ -6,7 +6,7 @@ import { and, asc, eq } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { POST as chatRoute } from "@/app/api/chat/[slug]/route";
-import { MAX_MESSAGE_CHARS, MAX_TURNS } from "@/lib/chat";
+import { CHAT_OFF_MESSAGE, MAX_MESSAGE_CHARS, MAX_TURNS } from "@/lib/chat";
 import type { ChatModel } from "@/server/ai/model";
 import * as schema from "@/server/db/schema";
 import { LIMITS, RATE_LIMIT_MESSAGES } from "@/server/rate-limit";
@@ -280,7 +280,7 @@ describe("POST /api/chat/[slug]", () => {
     expect(await messagesOf(theirs!.id)).toHaveLength(1);
   });
 
-  it("404s an unknown slug, a business with AI off, and AI on without Pro", async () => {
+  it("404s an unknown slug; says the chat is off when AI is off or the plan isn't Pro", async () => {
     expect((await post("no-such-business", { text: "Hi" })).status).toBe(404);
     expect((await post("Not A Slug!", { text: "Hi" })).status).toBe(404);
 
@@ -289,14 +289,14 @@ describe("POST /api/chat/[slug]", () => {
       .set({ aiEnabled: false })
       .where(eq(schema.businesses.id, b.business.id));
     const off = await post(b.business.slug, { text: "Hi" });
-    expect(off.status).toBe(404);
-    expect(await off.json()).toEqual({ error: "not_found", message: "Not found" });
+    expect(off.status).toBe(503);
+    expect(await off.json()).toEqual({ error: "ai_unavailable", message: CHAT_OFF_MESSAGE });
 
     await db
       .update(schema.businesses)
       .set({ aiEnabled: true, plan: "free" })
       .where(eq(schema.businesses.id, b.business.id));
-    expect((await post(b.business.slug, { text: "Hi" })).status).toBe(404);
+    expect((await post(b.business.slug, { text: "Hi" })).status).toBe(503);
 
     await db
       .update(schema.businesses)
