@@ -38,6 +38,7 @@ test.describe("dark mode", () => {
       "/app/live",
       "/app/services",
       "/app/staff",
+      "/app/ai",
       "/app/settings",
       "/app/settings/booking-page",
       "/app/settings/embed",
