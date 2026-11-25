@@ -105,6 +105,9 @@ async function fillTenant(f: Fixture, startsAt: Date) {
   await db
     .insert(schema.aiMessages)
     .values({ businessId, conversationId: conversation!.id, role: "user", content: "Hi" });
+  await db
+    .insert(schema.aiGuardrailEvents)
+    .values({ businessId, kind: "budget_warning", period: "2030-01" });
   await db.insert(schema.aiProposals).values({
     businessId,
     conversationId: conversation!.id,

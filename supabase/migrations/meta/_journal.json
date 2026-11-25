@@ -169,6 +169,20 @@
       "when": 1795524577088,
       "tag": "20261124124937_handoff_owner_answers",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1795612936206,
+      "tag": "20261125132216_ai_guardrail_events",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1795612940324,
+      "tag": "20261125132220_ai_guardrail_events_access",
+      "breakpoints": true
     }
   ]
 }

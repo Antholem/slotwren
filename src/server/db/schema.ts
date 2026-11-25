@@ -573,6 +573,38 @@ export const aiProposals = pgTable(
   ],
 );
 
+// What the AI receptionist's guardrails did (step 4.6): the monthly token
+// budget's 80% warning and 100% stop, the shared daily cap, the provider
+// refusing (429 / quota / overload) and hand-off spam. `period` ("2026-11",
+// business-local month) makes a kind once-per-period: the 80% email goes out
+// once because only one insert wins. Written by the server; members read.
+export const aiGuardrailKindEnum = pgEnum("ai_guardrail_kind", [
+  "budget_warning",
+  "budget_exhausted",
+  "global_cap",
+  "provider_limited",
+  "handoff_limited",
+  "honeypot",
+]);
+
+export const aiGuardrailEvents = pgTable(
+  "ai_guardrail_events",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    businessId: businessId(),
+    kind: aiGuardrailKindEnum("kind").notNull(),
+    period: text("period"),
+    detail: jsonb("detail").$type<Record<string, unknown>>(),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index().on(t.businessId, t.createdAt),
+    uniqueIndex("ai_guardrail_events_once")
+      .on(t.businessId, t.kind, t.period)
+      .where(sql`${t.period} is not null`),
+  ],
+);
+
 // "Question for the team"
 export const handoffRequests = pgTable(
   "handoff_requests",
