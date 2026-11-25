@@ -19,6 +19,8 @@ import {
 } from "@/lib/chat";
 import { SLUG_PATTERN } from "@/lib/slug";
 import { isValidTimeZone } from "@/lib/timezones";
+import { RESTING_MESSAGE, UNAVAILABLE_MESSAGE } from "@/lib/ai-guardrails";
+import { checkBudget, describe, isProviderLimited, withinDailyCap } from "@/server/ai/guardrails";
 import { getChatModel } from "@/server/ai/model";
 import { toChatMessages } from "@/server/ai/history";
 import { buildSystemPrompt } from "@/server/ai/prompt";
@@ -31,6 +33,7 @@ import {
   saveMessage,
   startConversation,
 } from "@/server/db/queries/public/ai-chat";
+import { recordGuardrailEvent } from "@/server/db/queries/public/ai-guardrails";
 import { listProposalOutcomes } from "@/server/db/queries/public/ai-proposals";
 import { getPublicBusinessBySlug } from "@/server/db/queries/public/business";
 import { clientIp, rateLimit } from "@/server/rate-limit";
@@ -41,15 +44,23 @@ import { clientIp, rateLimit } from "@/server/rate-limit";
  * The AI receptionist. Public, no login. Grounded answers plus tools
  * (src/server/ai/tools.ts) that read availability and the customer's own
  * booking, and propose changes for a Confirm card; at most 6 steps a turn. Nothing is
- * booked here: only /api/chat/<slug>/confirm does that, after the customer's tap. Streams an AI SDK UI message stream; the first chunk's metadata
+ * booked here: only /api/chat/<slug>/confirm does that, after the customer's tap.
+ *
+ * Guardrails (step 4.6, src/server/ai/guardrails.ts), before any model call:
+ * the business's monthly token budget (503 ai_resting at 100%; hand-off still
+ * works) and the shared daily cap (503 ai_unavailable). Costs are bounded: the
+ * last 12 turns, 5 model calls and a 400-token reply per message.
+ * A provider refusing for load shows the polite "not available" line.
+ *
+ * Streams an AI SDK UI message stream; the first chunk's metadata
  * carries the conversation id for the next request. The transcript lives in
  * ai_conversations / ai_messages and is replayed to the model from there, so
  * the client never supplies history. Tool calls and results are saved with the
  * reply (ai_messages.parts) and replayed with it. 404 when the business is unknown or its
  * AI is off (or it isn't on Pro); 503 when no model is configured.
  *
- * Never logs prompts, messages or keys: errors are logged by name and message
- * with the business and conversation ids.
+ * Never logs prompts, messages or keys: errors are logged by name and HTTP
+ * status with the business and conversation ids.
  */
 
 const MAX_BODY_BYTES = 16 * 1024;
@@ -61,8 +72,12 @@ const body = z.object({
   timezone: z.string().max(64).refine(isValidTimeZone).optional().catch(undefined),
 });
 
-/** Model calls a turn may take: tool calls plus the final answer. */
-const MAX_STEPS = 6;
+/** Model calls a turn may take (tool calls plus the answer), so the model can't loop. */
+const MAX_STEPS = 5;
+/** Longest reply, in tokens: a few sentences. */
+const MAX_OUTPUT_TOKENS = 400;
+/** Stored turns replayed to the model; the booking-status section covers what's older. */
+const HISTORY_ROWS = 12;
 
 const NO_STORE = { "Cache-Control": "no-store" };
 
@@ -83,11 +98,6 @@ async function chatBusiness(slug: string) {
   if (!business) return { refused: notFound() } as const;
   if (!business.aiEnabled) return { refused: chatOff() } as const;
   return { business } as const;
-}
-
-/** An error as safe log fields: never the request body, which holds the prompt. */
-function describe(error: unknown) {
-  return error instanceof Error ? `${error.name}: ${error.message}` : "Unknown error";
 }
 
 /**
@@ -165,6 +175,13 @@ export async function POST(request: Request, { params }: RouteContext<"/api/chat
     );
   }
 
+  // The business's monthly budget first (resting costs nothing), then the shared cap.
+  const budget = await checkBudget(businessId);
+  if (budget.state === "exhausted") return refuse(503, "ai_resting", RESTING_MESSAGE);
+  if (!(await withinDailyCap(businessId))) {
+    return refuse(503, "ai_unavailable", UNAVAILABLE_MESSAGE);
+  }
+
   // An unknown id (or another business's) starts a new conversation: never append to it.
   const existing = parsed.data.conversationId
     ? await findConversation({ businessId, conversationId: parsed.data.conversationId })
@@ -183,7 +200,7 @@ export async function POST(request: Request, { params }: RouteContext<"/api/chat
   const conversationId = existing?.id ?? (await startConversation({ businessId, channel: "page" }));
   const [history, proposals] = existing
     ? await Promise.all([
-        loadTranscript({ businessId, conversationId }),
+        loadTranscript({ businessId, conversationId, limit: HISTORY_ROWS }),
         listProposalOutcomes({ businessId, conversationId }),
       ])
     : [[], []];
@@ -205,9 +222,25 @@ export async function POST(request: Request, { params }: RouteContext<"/api/chat
     tools: receptionistTools({ businessId, conversationId, customerTimezone, now }),
     stopWhen: isStepCount(MAX_STEPS),
     timeout: { totalMs: chat.timeoutMs },
-    maxOutputTokens: 600,
+    maxOutputTokens: MAX_OUTPUT_TOKENS,
     maxRetries: 1,
-    onError: ({ error }) => console.error("[ai-chat] Model stream failed", log, describe(error)),
+    onError: ({ error }) => {
+      const limited = isProviderLimited(error);
+      console.error(
+        limited
+          ? "[ai-chat] Provider refused (rate limit, quota or overload)"
+          : "[ai-chat] Model stream failed",
+        log,
+        describe(error),
+      );
+      if (limited) {
+        void recordGuardrailEvent({
+          businessId,
+          kind: "provider_limited",
+          detail: { provider: chat.provider, ...describe(error) },
+        }).catch(() => {});
+      }
+    },
     onAbort: () => console.error("[ai-chat] Model timed out", log, `${chat.timeoutMs} ms`),
     onEnd: async ({ steps, responseMessages, totalUsage }) => {
       const reply = steps
@@ -253,7 +286,11 @@ export async function POST(request: Request, { params }: RouteContext<"/api/chat
       ),
       sendReasoning: false,
       messageMetadata: ({ part }) => (part.type === "start" ? { conversationId } : undefined),
-      onError: () => "Sorry, something went wrong on our side. Please try again.",
+      // Never a raw provider error: the polite line when it's refusing for load.
+      onError: (error) =>
+        isProviderLimited(error)
+          ? UNAVAILABLE_MESSAGE
+          : "Sorry, something went wrong on our side. Please try again.",
     }),
   });
 }

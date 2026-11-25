@@ -41,6 +41,8 @@ export const PROPOSAL_TTL_MS = 10 * 60_000;
 /** How many times one availability check hands the model. */
 const MAX_TIMES = 12;
 const MAX_ALTERNATIVES = 4;
+/** Longest range one availability check reads. */
+export const MAX_RANGE_DAYS = 14;
 
 type Refusal = {
   status: "not_found" | "unavailable" | "invalid" | "too_late" | "not_active";
@@ -189,7 +191,8 @@ export async function checkAvailability(
     serviceId: service.id,
     staffId: staff === "any" ? "any" : staff.id,
     date,
-    days: input.days ?? 1,
+    // At most two weeks a check: bounded work per call, whatever the model asks.
+    days: Math.min(Math.max(input.days ?? 1, 1), MAX_RANGE_DAYS),
     partOfDay: input.partOfDay,
     limit: MAX_TIMES,
   });

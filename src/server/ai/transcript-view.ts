@@ -84,7 +84,14 @@ function toolRow(
 
 export function buildTranscriptItems(
   rows: (StoredMessage & { createdAt: Date })[],
-  { bookingIdByCode }: { bookingIdByCode: Record<string, string> },
+  {
+    bookingIdByCode,
+    clean = (text) => text,
+  }: {
+    bookingIdByCode: Record<string, string>;
+    /** Assistant text as the owner should see it (sanitizeReply). */
+    clean?: (text: string) => string;
+  },
 ): TranscriptItem[] {
   const at = new Map(rows.map((r) => [r.id, r.createdAt.toISOString()]));
   const items: TranscriptItem[] = [];
@@ -100,7 +107,7 @@ export function buildTranscriptItems(
             kind: "message",
             id,
             role: message.role as "user" | "assistant",
-            text: part.text,
+            text: message.role === "assistant" ? clean(part.text) : part.text,
             at: when,
           });
         }

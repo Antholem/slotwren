@@ -8,6 +8,7 @@ import { nextDate, zonedInstant } from "@/lib/time-off";
 import { type RlsClaims, withRls } from "../client";
 import {
   aiConversations,
+  aiGuardrailEvents,
   aiMessages,
   bookings,
   businesses,
@@ -321,14 +322,18 @@ export type AiUsage = {
   openQuestions: number;
   chatsToday: number;
   bookedToday: number;
+  /** The latest thing a guardrail did (budget, caps, provider, spam), if any. */
+  lastEvent: { kind: GuardrailEventKind; createdAt: Date } | null;
 };
+
+export type GuardrailEventKind = (typeof aiGuardrailEvents.$inferSelect)["kind"];
 
 export async function getAiUsage(
   claims: RlsClaims,
   businessId: string,
   { zone, today }: { zone: string; today: string },
 ): Promise<AiUsage | null> {
-  const monthStart = zonedInstant(`${today.slice(0, 8)}01`, "00:00", zone);
+  const monthStart = zonedInstant(`${today.slice(0, 8)}01`, "00:00", zone); // = monthWindow().start
   const dayStart = zonedInstant(today, "00:00", zone);
   return withRls(claims, async (tx) => {
     const [business] = await tx
@@ -340,7 +345,7 @@ export async function getAiUsage(
       .from(businesses)
       .where(eq(businesses.id, businessId));
     if (!business) return null;
-    const [[chats], [booked], [tokens], [open]] = await Promise.all([
+    const [[chats], [booked], [tokens], [open], [lastEvent]] = await Promise.all([
       tx
         .select({
           month: sql<number>`count(*)::int`,
@@ -376,6 +381,12 @@ export async function getAiUsage(
         .select({ n: sql<number>`count(*)::int` })
         .from(handoffRequests)
         .where(and(eq(handoffRequests.businessId, businessId), eq(handoffRequests.status, "open"))),
+      tx
+        .select({ kind: aiGuardrailEvents.kind, createdAt: aiGuardrailEvents.createdAt })
+        .from(aiGuardrailEvents)
+        .where(eq(aiGuardrailEvents.businessId, businessId))
+        .orderBy(desc(aiGuardrailEvents.createdAt))
+        .limit(1),
     ]);
     return {
       aiEnabled: business.aiEnabled,
@@ -387,6 +398,7 @@ export async function getAiUsage(
       bookedToday: booked?.today ?? 0,
       tokens: tokens?.n ?? 0,
       openQuestions: open?.n ?? 0,
+      lastEvent: lastEvent ?? null,
     };
   });
 }

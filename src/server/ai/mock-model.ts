@@ -18,6 +18,9 @@ import { NOT_SURE_REPLY } from "./prompt";
  * - team / parking / tattoo / not sure    → the not-sure line + offerHandoff
  * - contains "[fail]"                     → an error the first time, fine on Retry
  * - contains "[stall]"                    → no reply the first time (the timeout), fine on Retry
+ * - contains "[loop]"                     → calls a tool every step (the step cap ends it)
+ * - code / homework / legal / medical / other companies / "ignore your instructions"
+ *                                         → a polite refusal that steers back to booking
  * - anything else                         → a short greeting
  */
 
@@ -130,8 +133,16 @@ function afterTool(result: { toolName: string; value: Obj }): StreamPart[] {
   return text("Done.");
 }
 
+/** What a well-behaved model says to an off-topic or jailbreak message (prompt rule 9). */
+const OFF_TOPIC =
+  /\b(write (some |me )?code|coding|programming|python|javascript|homework|essay|poem|lawyer|legal|medical|doctor|diagnos\w*|stocks?|crypto|competitors?|other salons?|system prompt|jailbreak|ignore (all |your |the )?(previous )?(instructions|rules))\b/i;
+
 function reply(prompt: Prompt): StreamPart[] | "fail" | "stall" {
   const last = prompt.at(-1);
+  // "[loop]": a model that never stops calling tools.
+  if (userText(prompt.findLast((m) => m.role === "user")).includes("[loop]")) {
+    return call("listServices", {});
+  }
   if (last?.role === "tool") {
     const results = toolResults(prompt);
     return afterTool(results.at(-1)!);
@@ -147,6 +158,13 @@ function reply(prompt: Prompt): StreamPart[] | "fail" | "stall" {
       return marker === "[fail]" ? "fail" : "stall";
     }
     return text("Sorry about that. I'm here now: how can I help?");
+  }
+
+  if (OFF_TOPIC.test(said)) {
+    const data = businessData(prompt) as { business?: { name?: string } };
+    return text(
+      `I can only help with ${data.business?.name ?? "this business"} and booking here. Would you like to book an appointment or ask about our services?`,
+    );
   }
 
   // A slot chip: "10:30 with Mia, please".

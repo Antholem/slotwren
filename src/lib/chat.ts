@@ -31,7 +31,8 @@ export type ChatErrorBody = {
     | "message_too_long"
     | "conversation_limit"
     | "rate_limited"
-    | "ai_unavailable";
+    | "ai_unavailable"
+    | "ai_resting";
   message: string;
 };
 
@@ -137,16 +138,24 @@ export type ConfirmFailure = {
 
 export type ConfirmResponse = ConfirmSuccess | ConfirmFailure;
 
-/** POST /api/chat/[slug]/handoff: a question for the team, answered by email. */
+/** Questions one customer (email) may have waiting for the team at once. */
+export const MAX_OPEN_QUESTIONS = 3;
+
+/**
+ * POST /api/chat/[slug]/handoff: a question for the team, answered by email.
+ * No `conversationId` (the chat is resting): the route starts one. `website`
+ * is a honeypot people never see.
+ */
 export type HandoffRequest = {
-  conversationId: string;
+  conversationId?: string;
   name: string;
   email: string;
   message: string;
+  website?: string;
 };
 
 export type HandoffResponse =
-  | { ok: true; message: string }
+  | { ok: true; message: string; conversationId: string | null }
   | { ok: false; error: "not_found" | "bad_request" | "rate_limited"; message: string };
 
 /** Data parts stored with confirmations and hand-offs, shown again after a refresh. */
