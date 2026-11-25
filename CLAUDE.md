@@ -208,6 +208,17 @@ timezone? }`; history (tool calls included, in `ai_messages.parts`) is replayed 
   region). Confirm cards collect the name and email the chat didn't get. Hand-off:
   `offerHandoff` shows a form; `POST /api/chat/[slug]/handoff` saves an open question on the
   customer's profile. Playwright runs with `AI_PROVIDER=mock` (`server/ai/mock-model.ts`).
+- **AI guardrails** (`server/ai/guardrails.ts`, `lib/ai-guardrails.ts`), all before any model
+  call: the business's monthly token budget (`businesses.ai_monthly_token_budget`, default
+  500,000; month = the 1st to the 1st in the business timezone; owners emailed once at 80%; at
+  100% the chat answers 503 `ai_resting` and the hand-off form still works) and the shared daily
+  cap `AI_DAILY_REQUEST_CAP` (default 200 messages, 503 `ai_unavailable`). A provider 429 /
+  quota / overload error shows `UNAVAILABLE_MESSAGE`, logged by name and status only. Per
+  message: last 12 turns, 5 model calls, 400 output tokens. Replies pass through
+  `sanitizeReply()` (plain text, only the business's own links) wherever they're shown.
+  Hand-offs: honeypot `website`, 3/hour per IP, 3/day per email, 3 open per customer. What
+  happened is in `ai_guardrail_events` (server writes, members read; once-per-`period` kinds
+  use a unique index).
 - **AI dashboard** (`/app/ai`). Transcripts (filters, search, page and the open one `?c=` in
   the URL, `lib/ai-transcripts.ts`), usage, the FAQ editor and the switch. Outcomes are
   classified in SQL from what members may read (Confirm's `data-confirmation` parts in
@@ -267,6 +278,9 @@ pnpm test:e2e --workers=1` (CI also uses one worker; the dev machine stalls Auth
 
 ## Phase 5 notes
 
+- **The nightly demo reset is `pnpm db:seed`'s `main()`** (it deletes and recreates Lumen
+  Studio). It also recreates the five AI receptionist chats (`scripts/seed/ai-conversations.ts`,
+  one per outcome, dated within two weeks of the run), so keep calling the whole seed.
 - **The Stripe webhook must never downgrade a business that has no Stripe subscription.**
   `plan` is a plain column: the demo business (Lumen Studio, `is_demo`) is Pro by seed, with
   no Stripe customer, and its AI receptionist needs Pro. Only a business with a subscription
