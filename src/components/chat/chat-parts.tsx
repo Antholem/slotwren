@@ -488,9 +488,11 @@ export function HandoffForm({
   question: string;
   conversationId: () => string | null;
   sent: boolean;
-  onSent: (message: string) => void;
+  /** `conversationId`: the one the route started, when the chat had none. */
+  onSent: (message: string, conversationId: string | null) => void;
 }) {
   const id = useId();
+  const [website, setWebsite] = useState("");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [message, setMessage] = useState(question);
@@ -520,18 +522,23 @@ export function HandoffForm({
 
   async function send(event: React.FormEvent) {
     event.preventDefault();
-    const conversation = conversationId();
-    if (!conversation || sending) return;
+    if (sending) return;
     setSending(true);
     setError(null);
     try {
       const response = await fetch(`/api/chat/${slug}/handoff`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ conversationId: conversation, name, email, message }),
+        body: JSON.stringify({
+          conversationId: conversationId() ?? undefined,
+          name,
+          email,
+          message,
+          website,
+        }),
       });
       const body = (await response.json().catch(() => null)) as HandoffResponse | null;
-      if (body?.ok) onSent(body.message);
+      if (body?.ok) onSent(body.message, body.conversationId);
       else setError(body?.message ?? "That didn't send. Please try again.");
     } catch {
       setError("That didn't send. Please try again.");
@@ -549,6 +556,18 @@ export function HandoffForm({
       <h3 id={`${id}-title`} className="text-title">
         Message the team
       </h3>
+      {/* A honeypot: hidden from people (and screen readers); bots fill it in. */}
+      <div aria-hidden="true" className="absolute -left-[9999px] h-px w-px overflow-hidden">
+        <label htmlFor={`${id}-website`}>Website</label>
+        <input
+          id={`${id}-website`}
+          name="website"
+          tabIndex={-1}
+          autoComplete="off"
+          value={website}
+          onChange={(e) => setWebsite(e.target.value)}
+        />
+      </div>
       <div className="flex flex-col gap-1.5">
         <Label htmlFor={`${id}-name`}>Name</Label>
         <Input

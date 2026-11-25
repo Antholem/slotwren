@@ -23,6 +23,7 @@ import type {
   ProposalCard,
 } from "@/lib/chat";
 import { CHAT_OFF_MESSAGE, MAX_MESSAGE_CHARS } from "@/lib/chat";
+import { sanitizeReply } from "@/lib/ai-guardrails";
 import { formatInZone } from "@/lib/dates";
 import { cn } from "@/lib/utils";
 
@@ -79,13 +80,19 @@ const textOf = (message: ChatMessage) =>
     .trim();
 
 /** The `message` of a refused request, or a generic line. */
-/** The receptionist was switched off (503 ai_unavailable). */
-function chatIsOff(error: Error | undefined): boolean {
-  if (!error) return false;
+/**
+ * A guardrail stopped the chat (not a hiccup to retry): switched off or the
+ * shared cap (ai_unavailable), or the month's budget used (ai_resting).
+ */
+function stoppedBy(error: Error | undefined): { error: string; message: string } | null {
+  if (!error) return null;
   try {
-    return (JSON.parse(error.message) as Partial<ChatErrorBody>).error === "ai_unavailable";
+    const body = JSON.parse(error.message) as Partial<ChatErrorBody>;
+    return body.error === "ai_unavailable" || body.error === "ai_resting"
+      ? { error: body.error, message: body.message ?? CHAT_OFF_MESSAGE }
+      : null;
   } catch {
-    return false;
+    return null;
   }
 }
 
@@ -127,7 +134,18 @@ export function ChatPanel({
   const [draft, setDraft] = useState("");
   const [announcement, setAnnouncement] = useState("");
   // The conversation id, read by the transport and the cards (not render state).
-  const [session] = useState(() => ({ id: readConversationId(slug) }));
+  const [session] = useState(() => {
+    const box = {
+      id: readConversationId(slug),
+      /** Remember the conversation (this tab), or forget it with null. */
+      set(id: string | null) {
+        box.id = id;
+        if (id) rememberConversationId(slug, id);
+        else forgetConversationId(slug);
+      },
+    };
+    return box;
+  });
   const [history, setHistory] = useState<"loading" | "ready">(session.id ? "loading" : "ready");
   const [greetedAt] = useState(() => formatInZone(new Date(), customerZone(), "HH:mm"));
   const openRef = useRef(open);
@@ -144,8 +162,7 @@ export function ChatPanel({
           const response = await fetch(input, init);
           const conversation = response.headers.get("x-conversation-id");
           if (conversation) {
-            session.id = conversation;
-            rememberConversationId(slug, conversation);
+            session.set(conversation);
           }
           return response;
         },
@@ -181,7 +198,12 @@ export function ChatPanel({
   const busy = status === "submitted" || status === "streaming";
   // Switched off by the business: say so, keep the page's own booking flow.
   const [offAtLoad, setOffAtLoad] = useState(false);
-  const off = offAtLoad || (status === "error" && chatIsOff(error));
+  const stopped =
+    (status === "error" ? stoppedBy(error) : null) ??
+    (offAtLoad ? { error: "ai_unavailable", message: CHAT_OFF_MESSAGE } : null);
+  const off = stopped !== null;
+  const [restingSent, setRestingSent] = useState(false);
+  const lastAsked = messages.findLast((m) => m.role === "user");
 
   // After a refresh: the conversation so far, from the server.
   useEffect(() => {
@@ -195,8 +217,7 @@ export function ChatPanel({
         } else if (response.status === 503) {
           setOffAtLoad(true);
         } else if (response.status === 404) {
-          forgetConversationId(slug);
-          session.id = null;
+          session.set(null);
         }
       })
       .catch(() => {
@@ -226,6 +247,11 @@ export function ChatPanel({
     if (!draft.trim() || busy) return;
     send(draft);
     setDraft("");
+  }
+
+  /** A hand-off sent without a chat started one: carry on in it. */
+  function adoptConversation(started: string | null) {
+    if (started && !session.id) session.set(started);
   }
 
   const pick = (t: OfferedTime) => send(`${t.day}, ${t.time} with ${t.staff}, please`);
@@ -308,7 +334,8 @@ export function ChatPanel({
           key={key}
           className="max-w-[85%] rounded-2xl border bg-card px-4 py-3 text-body whitespace-pre-wrap"
         >
-          {part.text}
+          {/* Plain text and only this business's own links (step 4.6). */}
+          {sanitizeReply(part.text, { origin: window.location.origin, slug })}
         </p>
       );
     }
@@ -409,7 +436,8 @@ export function ChatPanel({
           question={String(output?.question ?? "")}
           conversationId={() => session.id}
           sent={handoffSent(index)}
-          onSent={(message) => {
+          onSent={(message, started) => {
+            adoptConversation(started);
             setMessages((current) => [
               ...current,
               {
@@ -548,10 +576,25 @@ export function ChatPanel({
               ),
             )}
             {status === "submitted" && <TypingDots />}
-            {off && (
+            {stopped && (
               <p role="status" className="rounded-2xl border bg-card px-4 py-3 text-body">
-                {CHAT_OFF_MESSAGE}
+                {stopped.message}
               </p>
+            )}
+            {stopped?.error === "ai_resting" && (
+              // Resting for the month: the team can still answer.
+              <HandoffForm
+                slug={slug}
+                businessName={business.name}
+                question={lastAsked ? textOf(lastAsked) : ""}
+                conversationId={() => session.id}
+                sent={restingSent}
+                onSent={(message, started) => {
+                  adoptConversation(started);
+                  setRestingSent(true);
+                  setAnnouncement(message);
+                }}
+              />
             )}
             {status === "error" && error && !off && (
               <div
