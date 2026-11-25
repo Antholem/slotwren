@@ -37,9 +37,10 @@ import {
   type TranscriptOutcome,
   TRANSCRIPTS_PAGE_SIZE,
 } from "@/lib/ai-transcripts";
+import { budgetState } from "@/lib/ai-guardrails";
 import { formatInZone } from "@/lib/dates";
 import { cn } from "@/lib/utils";
-import type { AiUsage, FaqRow, TranscriptRow } from "@/server/db/queries/ai";
+import type { AiUsage, FaqRow, GuardrailEventKind, TranscriptRow } from "@/server/db/queries/ai";
 
 import { MarkAnsweredButton } from "./mark-answered";
 import { orderFaqsAction, removeFaqAction, saveFaqAction, switchAiAction } from "./actions";
@@ -143,7 +144,7 @@ export function AiView({
 
   return (
     <PageBody>
-      <AiHeader usage={usage} role={role} slug={slug} />
+      <AiHeader usage={usage} role={role} slug={slug} zone={zone} />
 
       {/* Sized by the content area, not the window: the sidebar takes its share. */}
       <div className="@container">
@@ -336,14 +337,82 @@ function stamp(iso: string, zone: string, today: string) {
 
 // ── header: switch and numbers ────────────────────────────────────────
 
+const GUARDRAIL_LABELS: Record<GuardrailEventKind, string> = {
+  budget_warning: "Used 80% of the monthly budget (owners emailed)",
+  budget_exhausted: "Monthly budget used up: resting until the 1st",
+  global_cap: "Paused by the daily limit shared across Slotwren",
+  provider_limited: "The AI provider was busy; customers saw “not available”",
+  handoff_limited: "Blocked repeated questions for the team",
+  honeypot: "Blocked a spam bot's question",
+};
+
+/** The month's token budget: a bar, the 80% warning, the resting state, the last guardrail event. */
+function BudgetBar({ usage, zone }: { usage: AiUsage; zone: string }) {
+  const share = usage.tokenBudget > 0 ? usage.tokens / usage.tokenBudget : 1;
+  const percent = Math.min(100, Math.floor(share * 100));
+  const state = budgetState(usage.tokens, usage.tokenBudget);
+  return (
+    <div className="flex flex-col gap-3">
+      <div
+        role="progressbar"
+        aria-label="AI budget used this month"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={percent}
+        aria-valuetext={`${percent}% of this month's budget`}
+        className="h-3 overflow-hidden rounded-full bg-muted"
+      >
+        <div
+          className={cn(
+            "h-full rounded-full",
+            state === "exhausted" ? "bg-danger" : state === "warning" ? "bg-warning" : "bg-primary",
+          )}
+          style={{ width: `${percent}%` }}
+        />
+      </div>
+      {state === "exhausted" ? (
+        <p role="status" className="rounded-lg bg-danger-soft p-3 text-body-sm text-danger-text">
+          <strong className="font-semibold">Resting for the rest of the month.</strong> The budget
+          is used up, so the chat tells customers it&apos;s resting; they can still book and send
+          questions to the team. It starts again on the 1st.
+        </p>
+      ) : state === "warning" ? (
+        <p role="status" className="rounded-lg bg-warning-soft p-3 text-body-sm text-warning-text">
+          <strong className="font-semibold">{percent}% of this month&apos;s budget used.</strong> At
+          100% the assistant rests until the 1st; booking and questions for the team keep working.
+        </p>
+      ) : (
+        <p className="text-body-sm text-muted-foreground">
+          {percent}% used. The budget resets on the 1st; at 100% the assistant rests until then.
+        </p>
+      )}
+      <p className="text-body-sm text-muted-foreground">
+        Last guardrail event:{" "}
+        {usage.lastEvent ? (
+          <>
+            {GUARDRAIL_LABELS[usage.lastEvent.kind]} ·{" "}
+            <span className="font-mono tabular-nums">
+              {formatInZone(usage.lastEvent.createdAt, zone, "d MMM, HH:mm")}
+            </span>
+          </>
+        ) : (
+          "none"
+        )}
+      </p>
+    </div>
+  );
+}
+
 function AiHeader({
   usage,
   role,
   slug,
+  zone,
 }: {
   usage: AiUsage | null;
   role: "owner" | "staff";
   slug: string;
+  zone: string;
 }) {
   const id = useId();
   const [pending, start] = useTransition();
@@ -464,6 +533,7 @@ function AiHeader({
               </dd>
             </div>
           </dl>
+          <BudgetBar usage={usage} zone={zone} />
         </section>
       )}
     </div>

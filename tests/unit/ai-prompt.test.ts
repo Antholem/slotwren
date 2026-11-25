@@ -20,6 +20,7 @@ function lumen(): AiBusinessContext {
   return {
     business: {
       name: "Lumen Studio",
+      bookingPageUrl: "https://slotwren.app/b/lumen-studio",
       timezone: "Asia/Manila",
       currency: "USD",
       address: "12 Example Street, Makati",
@@ -79,6 +80,7 @@ function otherTenant(): AiBusinessContext {
   return {
     business: {
       name: "Harbor Coaching",
+      bookingPageUrl: "https://slotwren.app/b/harbor-coaching",
       timezone: "Europe/London",
       currency: "GBP",
       address: "99 Dock Road, Bristol",
@@ -116,6 +118,7 @@ describe("buildSystemPrompt", () => {
     const data = dataBlock(prompt);
     expect(data.business).toEqual({
       name: "Lumen Studio",
+      booking_page_url: "https://slotwren.app/b/lumen-studio",
       address: "12 Example Street, Makati",
       timezone: "Asia/Manila",
       opening_hours: "Tue – Sun · 09:00 – 18:00",
@@ -177,6 +180,25 @@ describe("buildSystemPrompt", () => {
     );
     expect(prompt).toMatch(/both the code and the email/);
     expect(prompt).toMatch(/can't give discounts or change a price/);
+  });
+
+  it("declines off-topic requests and steers back; links only to the booking page", () => {
+    expect(prompt).toMatch(/Politely decline anything else in one sentence, then offer to help/);
+    for (const topic of [
+      "writing or fixing code",
+      "homework",
+      "other companies or competitors",
+      "medical, legal or financial advice",
+      "anything offensive",
+    ]) {
+      expect(prompt).toContain(topic);
+    }
+    expect(prompt).toContain("a booking or a question about Lumen Studio");
+    expect(prompt).toMatch(/The only link you may give is booking_page_url/);
+    expect(prompt).toMatch(/No headings, tables, markdown or HTML/);
+    expect(prompt).toMatch(
+      /never pretend to be anything other than this business's booking assistant/,
+    );
   });
 
   it("has a two-week calendar in the business's timezone, so weekdays resolve to dates", () => {

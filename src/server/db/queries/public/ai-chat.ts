@@ -1,8 +1,9 @@
 import "server-only";
 
 import type { ModelMessage } from "ai";
-import { and, asc, count, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, inArray, sql } from "drizzle-orm";
 
+import { env } from "@/env";
 import type { AiBusinessContext } from "@/server/ai/prompt";
 
 import { adminQuery, type TenantScoped } from "../../admin";
@@ -77,6 +78,7 @@ export const getAiContext = adminQuery(
     return {
       business: {
         name: business.name,
+        bookingPageUrl: new URL(`/b/${business.slug}`, env.NEXT_PUBLIC_APP_URL).toString(),
         timezone: business.timezone,
         currency: business.currency,
         address: business.address,
@@ -169,9 +171,17 @@ function isResponseMessages(parts: unknown): parts is ModelMessage[] {
 export const loadTranscript = adminQuery(
   async (
     db,
-    { businessId, conversationId }: TenantScoped & { conversationId: string },
+    {
+      businessId,
+      conversationId,
+      limit,
+    }: TenantScoped & {
+      conversationId: string;
+      /** Only the last `limit` turns (it starts at a customer turn). */
+      limit?: number;
+    },
   ): Promise<ModelMessage[]> => {
-    const rows = await db
+    const newest = await db
       .select({ role: aiMessages.role, content: aiMessages.content, parts: aiMessages.parts })
       .from(aiMessages)
       .where(
@@ -181,7 +191,11 @@ export const loadTranscript = adminQuery(
           inArray(aiMessages.role, ["user", "assistant"]),
         ),
       )
-      .orderBy(asc(aiMessages.createdAt), asc(aiMessages.id));
+      .orderBy(desc(aiMessages.createdAt), desc(aiMessages.id))
+      .limit(limit ?? 10_000);
+    const rows = newest.reverse();
+    // A window that starts mid-reply would replay tool results without their calls.
+    while (rows.length > 0 && rows[0]!.role !== "user") rows.shift();
     return rows.flatMap((row): ModelMessage[] => {
       if (row.role === "user") return [{ role: "user", content: row.content }];
       if (isResponseMessages(row.parts)) return row.parts;

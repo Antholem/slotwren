@@ -49,6 +49,10 @@ const serverSchema = z
     // refused on Vercel Production below.
     AI_PROVIDER: z.enum(["gemini", "anthropic", "mock"]).default("gemini"),
     AI_MODEL: z.string().min(1).max(100).optional(),
+    // Customer messages a day the AI may answer, across every business: keeps one
+    // busy business (or an attacker) from spending the shared key's quota. Each
+    // message is up to 5 model calls; 200 sits under Gemini Flash-Lite's ~500/day.
+    AI_DAILY_REQUEST_CAP: z.coerce.number().int().min(1).max(1_000_000).default(200),
     GOOGLE_GENERATIVE_AI_API_KEY: z.string().min(1).optional(),
     ANTHROPIC_API_KEY: z.string().min(1).optional(),
 

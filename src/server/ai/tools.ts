@@ -58,7 +58,7 @@ export function receptionistTools(scope: ReceptionistScope) {
         service: serviceRef,
         staff: staffRef,
         date: z.iso.date().describe("First day to check, YYYY-MM-DD."),
-        days: z.number().int().min(1).max(7).optional().describe("Days to check (1–7)."),
+        days: z.number().int().min(1).max(14).optional().describe("Days to check (1–14)."),
         partOfDay: z
           .enum(["morning", "afternoon", "evening", "any"])
           .optional()

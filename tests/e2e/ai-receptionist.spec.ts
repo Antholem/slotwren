@@ -283,3 +283,58 @@ test("a transcript with its tool rows, and a question answered from the profile"
   await expect(page.getByRole("region", { name: "Question for the team" })).toHaveCount(0);
   expect(errors).toEqual([]);
 });
+
+test("a used-up budget: the chat rests politely, questions still reach the team", async ({
+  page,
+  context,
+}) => {
+  test.setTimeout(120_000);
+  const errors = collectConsoleErrors(page);
+  const { fixture } = await businesses.signInWithBusiness(page, "owner", "ai-budget");
+  await withReceptionist(fixture);
+  const businessId = fixture.business.id;
+  await db
+    .update(schema.businesses)
+    .set({ aiMonthlyTokenBudget: 1000 })
+    .where(eq(schema.businesses.id, businessId));
+  const [conversation] = await db
+    .insert(schema.aiConversations)
+    .values({ businessId, channel: "page" })
+    .returning();
+  await db.insert(schema.aiMessages).values({
+    businessId,
+    conversationId: conversation!.id,
+    role: "assistant",
+    content: "Earlier",
+    inputTokens: 1000,
+    outputTokens: 0,
+  });
+
+  const customer = await context.newPage();
+  await customer.goto(`/b/${fixture.business.slug}`);
+  await customer.getByRole("button", { name: "Ask us anything" }).click();
+  const chat = customer.getByRole("dialog");
+  await chat
+    .getByRole("textbox", { name: "Ask a question or book" })
+    .fill("Do you sell gift cards?");
+  await chat.getByRole("textbox", { name: "Ask a question or book" }).press("Enter");
+  await expect(
+    chat.getByRole("status").filter({ hasText: "The assistant is resting for this month" }),
+  ).toBeVisible();
+  const form = chat.getByRole("form", { name: "Message the team" });
+  await expect(form.getByLabel("Your question")).toHaveValue("Do you sell gift cards?");
+  await expectNoAxeViolations(customer);
+  await form.getByLabel("Name").fill("Noor");
+  await form.getByLabel("Email").fill(`noor-${randomBytes(3).toString("hex")}@example.com`);
+  await form.getByRole("button", { name: "Send to the team" }).click();
+  await expect(chat.getByText("Sent to the team")).toBeVisible();
+
+  await page.goto("/app/ai");
+  await expect(
+    page.getByRole("progressbar", { name: "AI budget used this month" }),
+  ).toHaveAttribute("aria-valuenow", "100");
+  await expect(page.getByText("Resting for the rest of the month.")).toBeVisible();
+  await expect(page.getByText(/Last guardrail event: Monthly budget used up/)).toBeVisible();
+  await expectNoAxeViolations(page);
+  expect(errors).toEqual([]);
+});

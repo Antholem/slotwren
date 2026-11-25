@@ -3,6 +3,8 @@ import { connection } from "next/server";
 import { Suspense } from "react";
 
 import { PageBody } from "@/components/dashboard/page-header";
+import { env } from "@/env";
+import { sanitizeReply } from "@/lib/ai-guardrails";
 import { parseTranscriptFilters, TRANSCRIPTS_PAGE_SIZE } from "@/lib/ai-transcripts";
 import { todayIn } from "@/lib/time-off";
 import { getDashboardContext } from "@/server/auth/dashboard";
@@ -71,6 +73,8 @@ async function Ai({ searchParams }: Pick<PageProps<"/app/ai">, "searchParams">) 
       customerName: transcript.customerName,
       items: buildTranscriptItems(transcript.messages, {
         bookingIdByCode: Object.fromEntries(linked.map((b) => [b.code, b.id])),
+        clean: (text) =>
+          sanitizeReply(text, { origin: env.NEXT_PUBLIC_APP_URL, slug: business.slug }),
       }),
       questions: transcript.questions.map((q) => ({
         ...q,

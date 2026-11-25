@@ -1,7 +1,7 @@
 /**
  * Seeds the Lumen Studio demo business: 3 staff, 6 services, weekly hours,
- * time off, 8 FAQs, 40 customers and ~120 past + ~30 upcoming bookings, plus a
- * demo owner login linked to Mia.
+ * time off, 8 FAQs, 40 customers and ~120 past + ~30 upcoming bookings, five AI
+ * receptionist conversations (one per outcome), plus a demo owner login linked to Mia.
  *
  *   pnpm db:seed                 # local Supabase (default)
  *   SEED_ALLOW_REMOTE=true pnpm db:seed   # anywhere else, deliberately
@@ -21,6 +21,7 @@ import postgres from "postgres";
 import { hashToken, generateToken } from "../src/server/booking/tokens";
 import * as schema from "../src/server/db/schema";
 
+import { seedAiConversations } from "./seed/ai-conversations";
 import { generateLumenData, type GeneratedBooking } from "./seed/generate";
 import {
   BUSINESS,
@@ -297,6 +298,148 @@ async function main() {
             bookingEvents({ ...booking, id: bookingRows[index]!.id }, businessId, ownerId),
           ),
         );
+
+      // Five AI receptionist chats, one per outcome on /app/ai.
+      const ai = seedAiConversations({
+        now,
+        bookings: generated.bookings,
+        timeOff: generated.timeOff,
+        emailFor: (index) => emailFor(CUSTOMERS[index]!.name),
+        customerName: (index) => CUSTOMERS[index]!.name,
+      });
+      const conversationRows = await tx
+        .insert(schema.aiConversations)
+        .values(
+          ai.conversations.map((c) => ({
+            businessId,
+            channel: "page" as const,
+            customerId: c.customerIndex === null ? null : customerRows[c.customerIndex]!.id,
+            visitorName: c.visitorName,
+            visitorEmail: c.visitorEmail,
+            outcome: c.outcome,
+            startedAt: c.startedAt,
+            lastMessageAt: c.lastMessageAt,
+          })),
+        )
+        .returning({ id: schema.aiConversations.id });
+      const conversationId = Object.fromEntries(
+        ai.conversations.map((c, i) => [c.key, conversationRows[i]!.id]),
+      );
+      const aiBookingRows = await tx
+        .insert(schema.bookings)
+        .values(
+          ai.bookings.map((b) => {
+            const svc = SERVICES.find((s) => s.key === b.service)!;
+            return {
+              businessId,
+              code: b.code,
+              serviceId: serviceId[b.service],
+              staffId: staffId[b.staff],
+              customerId: customerRows[b.customerIndex]!.id,
+              startsAt: b.startsAt,
+              endsAt: b.endsAt,
+              bufferedStart: new Date(b.startsAt.getTime() - svc.bufferBeforeMin * 60_000),
+              bufferedEnd: new Date(b.endsAt.getTime() + svc.bufferAfterMin * 60_000),
+              status: b.status,
+              source: b.source,
+              priceCents: svc.priceCents,
+              customerName: CUSTOMERS[b.customerIndex]!.name,
+              customerTimezone: BUSINESS.timezone,
+              // Booked in the chat; the others were changed there.
+              aiConversationId: b.key === "booked" ? conversationId.booked : null,
+              cancelledAt: b.cancelledAt,
+              cancelledBy: b.cancelledAt ? ("customer" as const) : null,
+              createdAt: b.createdAt,
+              updatedAt: b.cancelledAt ?? b.createdAt,
+            };
+          }),
+        )
+        .returning({ id: schema.bookings.id });
+      const aiBookingId = Object.fromEntries(
+        ai.bookings.map((b, i) => [b.key, aiBookingRows[i]!.id]),
+      ) as Record<(typeof ai.bookings)[number]["key"], string>;
+      await tx.insert(schema.manageTokens).values(
+        ai.bookings
+          .filter((b) => b.status === "confirmed")
+          .map((b) => ({
+            businessId,
+            bookingId: aiBookingId[b.key],
+            tokenHash: hashToken(generateToken()),
+            purpose: "created" as const,
+            expiresAt: b.endsAt,
+          })),
+      );
+      await tx.insert(schema.bookingEvents).values(
+        ai.bookings.flatMap((b): (typeof schema.bookingEvents.$inferInsert)[] => {
+          const bookingId = aiBookingId[b.key];
+          const created = {
+            businessId,
+            bookingId,
+            type: "created" as const,
+            actor: "customer" as const,
+            data: { source: b.source },
+            createdAt: b.createdAt,
+          };
+          if (b.key === "moved") {
+            const movedAt = ai.conversations.find((c) => c.key === "moved")!.lastMessageAt;
+            return [
+              created,
+              {
+                businessId,
+                bookingId,
+                type: "rescheduled" as const,
+                actor: "customer" as const,
+                data: {
+                  from: { startsAt: b.movedFrom!.toISOString(), staffId: staffId[b.staff] },
+                  to: { startsAt: b.startsAt.toISOString(), staffId: staffId[b.staff] },
+                },
+                createdAt: movedAt,
+              },
+            ];
+          }
+          if (b.cancelledAt) {
+            return [
+              created,
+              {
+                businessId,
+                bookingId,
+                type: "cancelled" as const,
+                actor: "customer" as const,
+                data: { reason: null, notified: true },
+                createdAt: b.cancelledAt,
+              },
+            ];
+          }
+          return [created];
+        }),
+      );
+      await tx.insert(schema.aiMessages).values(
+        ai.conversations.flatMap((c) =>
+          c.messages(aiBookingId).map((m) => ({
+            businessId,
+            conversationId: conversationId[c.key]!,
+            role: m.role,
+            content: m.content,
+            parts: m.parts,
+            inputTokens: m.inputTokens,
+            outputTokens: m.outputTokens,
+            createdAt: m.createdAt,
+          })),
+        ),
+      );
+      await tx.insert(schema.handoffRequests).values(
+        ai.conversations
+          .filter((c) => c.question && c.customerIndex !== null)
+          .map((c) => ({
+            businessId,
+            conversationId: conversationId[c.key]!,
+            customerId: customerRows[c.customerIndex!]!.id,
+            name: CUSTOMERS[c.customerIndex!]!.name,
+            email: emailFor(CUSTOMERS[c.customerIndex!]!.name),
+            message: c.question!,
+            createdAt: c.lastMessageAt,
+          })),
+      );
     });
   } finally {
     await client.end();
@@ -316,6 +459,7 @@ async function main() {
   console.log(`  past bookings ${past.length} (${byStatus(past)})`);
   console.log(`  upcoming bookings ${upcoming.length} (${byStatus(upcoming)})`);
   console.log(`  time off ${generated.timeOff.length}; demo owner ${DEMO_OWNER.email}`);
+  console.log("  AI conversations 5 (booked, rescheduled, cancelled, handed off, FAQ)");
 }
 
 main().catch((error: unknown) => {

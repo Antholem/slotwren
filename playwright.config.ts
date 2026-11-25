@@ -43,6 +43,6 @@ export default defineConfig({
         reuseExistingServer: !process.env.CI,
         timeout: 120_000,
         // The scripted AI receptionist: no keys, no network (env.ts refuses it in production).
-        env: { AI_PROVIDER: "mock" },
+        env: { AI_PROVIDER: "mock", AI_DAILY_REQUEST_CAP: "100000" },
       },
 });

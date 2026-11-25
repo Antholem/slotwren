@@ -269,6 +269,7 @@ describe("public data", () => {
       expect(context).toEqual({
         business: {
           name: fixture.business.name,
+          bookingPageUrl: expect.stringMatching(new RegExp("/b/" + fixture.business.slug + "$")),
           timezone: "Asia/Manila",
           currency: "USD",
           address: "12 Lumen Lane",

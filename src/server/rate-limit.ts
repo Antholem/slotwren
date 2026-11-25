@@ -28,7 +28,12 @@ export const LIMITS = {
   // few seconds at most; the per-business cap bounds spend if many IPs pile on.
   "chat:ip": { limit: 20, windowSec: 60 },
   "chat:business": { limit: 300, windowSec: 60 },
-} as const;
+  // Every business shares the AI provider's key and its daily quota (env).
+  "chat:global": { limit: env.AI_DAILY_REQUEST_CAP, windowSec: 86_400 },
+  // "Message the team": a person might send one or two; more is spam.
+  "handoff:ip": { limit: 3, windowSec: 3_600 },
+  "handoff:email": { limit: 3, windowSec: 86_400 },
+} as const satisfies Record<string, { limit: number; windowSec: number }>;
 
 export type LimitName = keyof typeof LIMITS;
 export type Action = "slots" | "book" | "chat";
@@ -101,22 +106,21 @@ export const RATE_LIMIT_MESSAGES = {
     "This business is taking a lot of bookings right now. Try again in a few minutes.",
   "chat:ip": "You're sending messages very quickly. Wait a moment, then try again.",
   "chat:business": "The assistant is very busy right now. Wait a moment, then try again.",
+  "chat:global": "The assistant isn't available right now. You can still book on this page.",
+  "handoff:ip": "You've sent a few questions already. Try again in an hour.",
+  "handoff:email":
+    "You've sent a few questions today. The team will reply by email; try again tomorrow.",
 } as const satisfies Record<LimitName, string>;
 
 export type RateLimitResult =
   { ok: true } | { ok: false; limit: LimitName; retryAfterSec: number; message: string };
 
-/** `rateLimit` bound to a limiter (tests pass their own). */
-export function createRateLimit(getLimiter: () => Limiter) {
-  return async function rateLimit(
-    action: Action,
-    { ip, businessId }: { ip: string; businessId: string },
+/** Every check in order; the first one over its limit refuses. */
+function createLimitAll(getLimiter: () => Limiter) {
+  return async function limitAll(
+    checks: [LimitName, string][],
     now = Date.now(),
   ): Promise<RateLimitResult> {
-    const checks: [LimitName, string][] = [
-      [`${action}:ip`, ip],
-      [`${action}:business`, businessId],
-    ];
     for (const [name, key] of checks) {
       let result;
       try {
@@ -138,7 +142,28 @@ export function createRateLimit(getLimiter: () => Limiter) {
   };
 }
 
+/** `rateLimit` bound to a limiter (tests pass their own). */
+export function createRateLimit(getLimiter: () => Limiter) {
+  const limitAll = createLimitAll(getLimiter);
+  return async function rateLimit(
+    action: Action,
+    { ip, businessId }: { ip: string; businessId: string },
+    now = Date.now(),
+  ): Promise<RateLimitResult> {
+    return limitAll(
+      [
+        [`${action}:ip`, ip],
+        [`${action}:business`, businessId],
+      ],
+      now,
+    );
+  };
+}
+
 export const rateLimit = createRateLimit(defaultLimiter);
+
+/** Any limits, by name and key (the daily AI cap, hand-off spam). */
+export const limitAll = createLimitAll(defaultLimiter);
 
 /**
  * The caller's IP: the first x-forwarded-for hop (set by Vercel), else
