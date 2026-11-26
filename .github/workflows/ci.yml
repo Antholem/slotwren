@@ -29,6 +29,8 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: Widget size (embed.js under 10 kB gzipped)
+        run: pnpm embed:build
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm format:check

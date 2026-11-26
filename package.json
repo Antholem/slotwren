@@ -3,8 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
+    "dev": "pnpm embed:build && next dev",
+    "build": "pnpm embed:build && next build",
     "start": "next start",
     "lint": "eslint --cache .",
     "format": "prettier --write .",
@@ -25,8 +25,9 @@
     "jobs:dev": "pnpm dlx inngest-cli@1.53.0 dev --no-discovery -u http://localhost:3000/api/inngest",
     "db:seed": "tsx scripts/seed.ts",
     "ai:ask": "node scripts/ai-ask.mjs",
+    "embed:build": "tsx scripts/build-embed.ts",
     "ai:eval": "vitest run --project ai-eval --reporter verbose",
-    "check": "pnpm lint && pnpm typecheck && pnpm format:check && pnpm test"
+    "check": "pnpm lint && pnpm typecheck && pnpm format:check && pnpm embed:build && pnpm test"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "4.0.105",
