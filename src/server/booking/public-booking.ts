@@ -17,11 +17,14 @@ export async function bookFromPage({
   slug,
   input,
   ip,
+  source = "page",
   now = new Date(),
 }: {
   slug: string;
   input: unknown;
   ip: string;
+  /** "widget" when booked inside the website widget. */
+  source?: "page" | "widget";
   now?: Date;
 }): Promise<Result<{ bookingId: string; manageToken: string }, BookingError | "rate_limited">> {
   const business = SLUG_PATTERN.test(slug) ? await getPublicBusinessBySlug(slug) : null;
@@ -30,11 +33,9 @@ export async function bookFromPage({
   const limited = await rateLimit("book", { ip, businessId: business.id }, now.getTime());
   if (!limited.ok) return err("rate_limited", limited.message);
 
-  const result = await createBooking(
-    { kind: "public", businessId: business.id, source: "page" },
-    input,
-    { now },
-  );
+  const result = await createBooking({ kind: "public", businessId: business.id, source }, input, {
+    now,
+  });
   // The manage token goes back to this customer once; only its hash is stored.
   return result.ok
     ? ok({ bookingId: result.data.id, manageToken: result.data.manageToken })

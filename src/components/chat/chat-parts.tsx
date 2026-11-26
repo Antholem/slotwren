@@ -13,6 +13,7 @@ import {
 import type { Route } from "next";
 import { useEffect, useId, useState } from "react";
 
+import { bookingSource } from "@/components/booking/embed-bridge";
 import { ManageLink } from "@/components/booking/manage-link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -535,6 +536,7 @@ export function HandoffForm({
           email,
           message,
           website,
+          channel: bookingSource(),
         }),
       });
       const body = (await response.json().catch(() => null)) as HandoffResponse | null;

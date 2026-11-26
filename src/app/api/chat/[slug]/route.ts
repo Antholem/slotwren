@@ -69,6 +69,8 @@ const body = z.object({
   text: z.string().trim().min(1),
   // The customer's zone, for offered times. Unknown or junk: the business's.
   timezone: z.string().max(64).refine(isValidTimeZone).optional().catch(undefined),
+  // Where the chat is: the booking page, or the website widget's iframe.
+  channel: z.enum(["page", "widget"]).optional().catch(undefined),
 });
 
 /** Model calls a turn may take (tool calls plus the answer), so the model can't loop. */
@@ -197,7 +199,9 @@ export async function POST(request: Request, { params }: RouteContext<"/api/chat
   const context = await getAiContext({ businessId });
   if (!context) return notFound();
 
-  const conversationId = existing?.id ?? (await startConversation({ businessId, channel: "page" }));
+  const conversationId =
+    existing?.id ??
+    (await startConversation({ businessId, channel: parsed.data.channel ?? "page" }));
   const [history, proposals] = existing
     ? await Promise.all([
         loadTranscript({ businessId, conversationId, limit: HISTORY_ROWS }),

@@ -53,3 +53,7 @@ supabase/.temp
 /blob-report/
 /playwright/.cache/
 .eslintcache
+
+# The website widget, built from embed/embed.ts (pnpm embed:build)
+/public/embed.js
+/public/embed/

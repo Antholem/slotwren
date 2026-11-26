@@ -6,6 +6,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { getNextOpenings, getPublicSlots } from "@/server/booking/public-slots";
 import { checkAvailability, listServices, lookUpBooking } from "@/server/ai/receptionist";
 import { getAiContext } from "@/server/db/queries/public/ai-chat";
+import { getEmbedSettings } from "@/server/db/queries/public/embed";
 import { getBookingConfirmation, getBookingPage } from "@/server/db/queries/public/booking-page";
 import { findBookingByManageToken } from "@/server/db/queries/public/bookings";
 import { getPublicBusinessBySlug } from "@/server/db/queries/public/business";
@@ -123,6 +124,31 @@ describe("public data", () => {
 
   // The one public query that returns an address: server-only, used to email
   // the invitee their sign-in link. The browser gets maskEmail() of it.
+  it("the widget's options come with the brand colour, nothing else from settings", async () => {
+    await db
+      .update(schema.businesses)
+      .set({
+        settings: {
+          embed: { buttonText: "Book a visit", allowedOrigins: ["https://www.example.com"] },
+          notifications: { ownerNewBookingEmail: true },
+        },
+      })
+      .where(eq(schema.businesses.id, fixture.business.id));
+    const embed = await getEmbedSettings({ businessId: fixture.business.id });
+    expect(embed).toEqual({
+      embed: {
+        buttonText: "Book a visit",
+        position: "bottom-right",
+        showChat: true,
+        open: "booking",
+        allowedOrigins: ["https://www.example.com"],
+      },
+      brandColor: fixture.business.brandColor,
+    });
+    expectNothingPrivate(embed);
+    expect(JSON.stringify(embed)).not.toContain("ownerNewBookingEmail");
+  });
+
   it("a manage link resolves to its business and booking IDs only", async () => {
     const [booking] = await db
       .insert(schema.bookings)

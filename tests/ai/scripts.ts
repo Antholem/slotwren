@@ -306,8 +306,9 @@ export const SCRIPTS: Script[] = [
     },
   },
   {
-    name: "10. Cancel inside the window: explained, not done",
+    name: "10. Cancel after the free-cancellation window closes: explained, not done",
     async run(w) {
+      // 5 hours away; free cancellation ended 24 hours before the appointment.
       const booking = await w.existingBooking("Mia", new Date(Date.now() + 5 * 3_600_000));
       const ask = await w.say(
         `Please cancel booking ${booking.code}. My email is ${w.customerEmail}.`,
@@ -326,6 +327,31 @@ export const SCRIPTS: Script[] = [
       expect(ask.text).toMatch(/24|contact|call|team|too late|close/i);
       expect(await w.proposals()).toEqual([]);
       expect((await w.booking(booking.id))!.status).toBe("confirmed");
+    },
+  },
+  {
+    name: "10b. Cancel inside the free-cancellation window: done after Confirm",
+    async run(w) {
+      // Four days away: well before the 24-hour cut-off.
+      const booking = await w.existingBooking("Mia", w.at(w.openDay(4), "11:00"));
+      const ask = await w.say(
+        `Please cancel booking ${booking.code}. My email is ${w.customerEmail}.`,
+        [
+          tool("proposeCancel", { code: booking.code, email: w.customerEmail }),
+          reply("Here are the details: tap Cancel booking to confirm."),
+        ],
+      );
+      ok(ask);
+      const card = proposed(ask, "proposeCancel");
+      expect(card).toMatchObject({ kind: "cancel", code: booking.code });
+      expect((await w.booking(booking.id))!.status).toBe("confirmed"); // not until Confirm
+
+      const done = await w.confirm(card.proposalId);
+      expect(done.status).toBe(200);
+      expect(await w.booking(booking.id)).toMatchObject({
+        status: "cancelled",
+        cancelledBy: "customer",
+      });
     },
   },
   {

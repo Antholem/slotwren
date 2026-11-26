@@ -41,6 +41,7 @@ const body = z.object({
     .min(1, "Type your question.")
     .max(1000, "Keep your question under 1,000 characters."),
   website: z.string().max(500).optional(),
+  channel: z.enum(["page", "widget"]).optional().catch(undefined),
 });
 
 const respond = (result: HandoffResponse, status = result.ok ? 200 : 400, headers = {}) =>
@@ -111,7 +112,9 @@ export async function POST(request: Request, { params }: RouteContext<"/api/chat
   if (parsed.data.conversationId && !existing) {
     return respond({ ok: false, error: "not_found", message: "Start a chat first." }, 404);
   }
-  const conversationId = existing?.id ?? (await startConversation({ businessId, channel: "page" }));
+  const conversationId =
+    existing?.id ??
+    (await startConversation({ businessId, channel: parsed.data.channel ?? "page" }));
 
   await saveHandoff({ businessId, conversationId, name, email, message });
   // In the transcript, so a refresh shows it sent and the model knows next turn.

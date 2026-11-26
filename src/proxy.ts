@@ -1,10 +1,12 @@
 import { type NextRequest, NextResponse } from "next/server";
 
+import { frameAncestors } from "@/lib/embed";
 import { SLUG_PATTERN } from "@/lib/slug";
 import type { RlsClaims } from "@/server/db/client";
 import { getAccountStatus } from "@/server/db/queries/onboarding";
 import { getBookingConfirmation } from "@/server/db/queries/public/booking-page";
 import { findBookingByManageToken } from "@/server/db/queries/public/bookings";
+import { getEmbedSettings } from "@/server/db/queries/public/embed";
 import { getPublicBusinessBySlug } from "@/server/db/queries/public/business";
 import { hashToken } from "@/server/booking/tokens";
 import { redirectWithSession, updateSession } from "@/server/supabase/proxy";
@@ -84,9 +86,36 @@ async function bookingPageGate(request: NextRequest, pathname: string) {
     (sub !== "booked" ||
       (UUID.test(bookingId) &&
         (await getBookingConfirmation({ businessId: business.id, bookingId }))));
-  if (found) return NextResponse.next();
   // A route that doesn't exist renders the branded not-found page with a 404.
-  return NextResponse.rewrite(new URL("/_booking-link-not-found", request.url));
+  const response = found
+    ? NextResponse.next()
+    : NextResponse.rewrite(new URL("/_booking-link-not-found", request.url));
+  return withFraming(response, request, business?.id ?? null);
+}
+
+/**
+ * Who may show this booking page in a frame. Only the embedded version
+ * (?embed=1, the website widget) may be framed: by the business's allowed
+ * websites, or any site when it hasn't listed any. Everything else, here and
+ * across the app (next.config.ts), refuses framing.
+ */
+async function withFraming(
+  response: NextResponse,
+  request: NextRequest,
+  businessId: string | null,
+) {
+  const embedded = request.nextUrl.searchParams.get("embed") === "1" && businessId !== null;
+  if (!embedded) {
+    response.headers.set("X-Frame-Options", "DENY");
+    response.headers.set("Content-Security-Policy", "frame-ancestors 'none'");
+    return response;
+  }
+  const embed = await getEmbedSettings({ businessId });
+  response.headers.set(
+    "Content-Security-Policy",
+    `frame-ancestors ${frameAncestors(embed?.embed.allowedOrigins ?? [])}`,
+  );
+  return response;
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

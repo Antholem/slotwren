@@ -15,6 +15,13 @@ import { clientIp } from "@/server/rate-limit";
 export async function bookAction(
   slug: string,
   input: unknown,
+  /** Inside the website widget: recorded as "widget" (the Bookings badge). */
+  source?: unknown,
 ): Promise<Result<{ bookingId: string; manageToken: string }, BookingError | "rate_limited">> {
-  return bookFromPage({ slug, input, ip: clientIp(await headers()) });
+  return bookFromPage({
+    slug,
+    input,
+    ip: clientIp(await headers()),
+    source: source === "widget" ? "widget" : "page",
+  });
 }

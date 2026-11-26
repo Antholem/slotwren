@@ -96,10 +96,14 @@ export function staffColorFor(index: number): StaffColor {
 
 // UI preferences only. Anything the slot engine or billing depends on is a real column.
 export type BusinessSettings = {
+  // The website widget (src/lib/embed.ts reads it with defaults).
   embed?: {
-    buttonText: string; // ≤ 24 chars
-    position: "bottom-right" | "bottom-left" | "inline";
-    showChat: boolean;
+    buttonText?: string; // ≤ 24 chars
+    position?: "bottom-right" | "bottom-left" | "inline";
+    showChat?: boolean;
+    open?: "booking" | "chat";
+    /** Websites that may frame the booking page; empty or missing: any. */
+    allowedOrigins?: string[];
   };
   notifications?: { ownerNewBookingEmail: boolean };
   /**

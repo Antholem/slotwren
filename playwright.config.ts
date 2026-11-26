@@ -13,6 +13,8 @@ if (existsSync(".env.local")) {
 
 const PORT = Number(process.env.PORT ?? 3000);
 const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? `http://localhost:${PORT}`;
+/** Where tests/support/embed-host.mjs serves the sample website (another origin). */
+const EMBED_HOST_PORT = 3200;
 
 export default defineConfig({
   testDir: "./tests/e2e",
@@ -35,14 +37,25 @@ export default defineConfig({
     // The booking flow is mobile first (390 px mockups).
     { name: "mobile", use: { ...devices["Pixel 7"] } },
   ],
-  webServer: process.env.PLAYWRIGHT_BASE_URL
-    ? undefined
-    : {
-        command: process.env.CI ? `pnpm start --port ${PORT}` : `pnpm dev --port ${PORT}`,
-        url: baseURL,
-        reuseExistingServer: !process.env.CI,
-        timeout: 120_000,
-        // The scripted AI receptionist: no keys, no network (env.ts refuses it in production).
-        env: { AI_PROVIDER: "mock", AI_DAILY_MODEL_CALL_CAP: "100000" },
-      },
+  webServer: [
+    ...(process.env.PLAYWRIGHT_BASE_URL
+      ? []
+      : [
+          {
+            command: process.env.CI ? `pnpm start --port ${PORT}` : `pnpm dev --port ${PORT}`,
+            url: baseURL,
+            reuseExistingServer: !process.env.CI,
+            timeout: 120_000,
+            // The scripted AI receptionist: no keys, no network (env.ts refuses it in production).
+            env: { AI_PROVIDER: "mock", AI_DAILY_MODEL_CALL_CAP: "100000" },
+          },
+        ]),
+    // A plain "customer website" on another origin, for the widget (tests/e2e/embed.spec.ts).
+    {
+      command: "node tests/support/embed-host.mjs",
+      url: `http://localhost:${EMBED_HOST_PORT}`,
+      reuseExistingServer: !process.env.CI,
+      env: { EMBED_APP_URL: baseURL, EMBED_HOST_PORT: String(EMBED_HOST_PORT) },
+    },
+  ],
 });
