@@ -1,0 +1,66 @@
+name: AI eval
+
+# The AI receptionist's 15 scripted conversations against a real model
+# (`pnpm ai:eval`, tests/ai/eval.test.ts). Manual only: it spends the
+# provider's quota, so it never runs on pushes or pull requests. Use it to
+# compare providers (Gemini vs Claude Haiku) before switching.
+#
+# Needs the repo secret for the chosen provider:
+# GOOGLE_GENERATIVE_AI_API_KEY (gemini) or ANTHROPIC_API_KEY (anthropic).
+
+on:
+  workflow_dispatch:
+    inputs:
+      provider:
+        description: AI provider
+        type: choice
+        options: [gemini, anthropic]
+        default: gemini
+      model:
+        description: Model id (empty = the provider's default)
+        type: string
+        required: false
+      pause_ms:
+        description: Pause between turns, ms (free tiers limit requests per minute)
+        type: string
+        default: "6000"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ai-eval
+  cancel-in-progress: false
+
+jobs:
+  eval:
+    name: AI eval (${{ inputs.provider }} ${{ inputs.model }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      SKIP_ENV_VALIDATION: "false"
+      AI_PROVIDER: ${{ inputs.provider }}
+      AI_MODEL: ${{ inputs.model }}
+      AI_EVAL_PAUSE_MS: ${{ inputs.pause_ms }}
+      GOOGLE_GENERATIVE_AI_API_KEY: ${{ secrets.GOOGLE_GENERATIVE_AI_API_KEY }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Start Supabase
+        run: pnpm exec supabase start -x studio,imgproxy,edge-runtime,logflare,vector,mailpit,postgres-meta,supavisor
+      - name: Export Supabase env
+        run: |
+          pnpm exec supabase status -o env \
+            --override-name api.url=NEXT_PUBLIC_SUPABASE_URL \
+            --override-name auth.publishable_key=NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY \
+            --override-name auth.secret_key=SUPABASE_SECRET_KEY \
+            --override-name db.url=DATABASE_URL \
+            | grep -E '^(NEXT_PUBLIC_SUPABASE_URL|NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY|SUPABASE_SECRET_KEY|DATABASE_URL)=' \
+            | sed 's/"//g' >> "$GITHUB_ENV"
+      - run: pnpm ai:eval

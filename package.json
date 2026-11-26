@@ -25,6 +25,7 @@
     "jobs:dev": "pnpm dlx inngest-cli@1.53.0 dev --no-discovery -u http://localhost:3000/api/inngest",
     "db:seed": "tsx scripts/seed.ts",
     "ai:ask": "node scripts/ai-ask.mjs",
+    "ai:eval": "vitest run --project ai-eval --reporter verbose",
     "check": "pnpm lint && pnpm typecheck && pnpm format:check && pnpm test"
   },
   "dependencies": {

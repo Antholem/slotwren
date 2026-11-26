@@ -47,10 +47,24 @@ export default defineConfig({
         extends: true,
         test: {
           name: "integration",
-          include: ["tests/integration/**/*.test.ts"],
+          // The AI receptionist's scripted conversations (mock model) run here too.
+          include: ["tests/integration/**/*.test.ts", "tests/ai/conversations.test.ts"],
           environment: "node",
           fileParallelism: false,
           testTimeout: 20_000,
+          hookTimeout: 60_000,
+        },
+      },
+      {
+        // `pnpm ai:eval` only: the scripted conversations against the real model.
+        // Never in `pnpm test`, `test:integration` or CI's default jobs.
+        extends: true,
+        test: {
+          name: "ai-eval",
+          include: ["tests/ai/eval.test.ts"],
+          environment: "node",
+          fileParallelism: false,
+          testTimeout: 300_000,
           hookTimeout: 60_000,
         },
       },
