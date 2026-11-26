@@ -41,7 +41,8 @@ export const SCRIPTS: Script[] = [
       ]);
       ok(turn);
       expect(turn.text).toContain("$80");
-      expect(turn.text).toMatch(/90|1 ?h(ou)?r?s?\b.{0,4}30|1\.5|one and a half/i);
+      // "90 min", "1 h 30 min", "1 hour and 30 minutes", "1.5 hours"…
+      expect(turn.text).toMatch(/90|1 ?h(ou)?r?s?,?(\s*(and|&))?\s*30|1\.5|one and a half/i);
       expect(turn.tools.filter((t) => t.name.startsWith("propose"))).toEqual([]);
       await nothingWritten(w);
     },
