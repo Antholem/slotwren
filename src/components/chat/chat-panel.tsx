@@ -7,6 +7,7 @@ import { Dialog as DialogPrimitive } from "radix-ui";
 import { type RefObject, useEffect, useId, useRef, useState } from "react";
 
 import { BusinessMark } from "@/components/booking/booking-layout";
+import { bookingSource } from "@/components/booking/embed-bridge";
 import { rememberManageToken } from "@/components/booking/manage-link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -174,6 +175,7 @@ export function ChatPanel({
               conversationId: session.id ?? undefined,
               text: last ? textOf(last) : "",
               timezone: customerZone(),
+              channel: bookingSource(),
             },
           };
         },

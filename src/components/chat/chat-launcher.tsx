@@ -2,7 +2,9 @@
 
 import { ChevronDown, MessageCircle } from "lucide-react";
 import dynamic from "next/dynamic";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+
+import { embedHost } from "@/components/booking/embed-bridge";
 
 import { cn } from "@/lib/utils";
 
@@ -37,6 +39,16 @@ export function ChatLauncher(props: ChatLauncherProps) {
     setUnread(false);
     setOpen((value) => !value);
   }
+
+  // The website widget's chat bubble opens the page with ?chat=1: straight into the chat.
+  useEffect(() => {
+    if (!embedHost() || new URLSearchParams(window.location.search).get("chat") !== "1") return;
+    const frame = requestAnimationFrame(() => {
+      setOpened(true);
+      setOpen(true);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, []);
 
   return (
     <>

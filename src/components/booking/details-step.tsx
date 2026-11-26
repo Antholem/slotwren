@@ -32,10 +32,13 @@ import {
 import { LocalRange, LocalTime } from "./local-time";
 import { rememberManageToken } from "./manage-link";
 import { Policy, StepLayout, StepProgress, SummaryCard } from "./booking-layout";
+import { bookingSource } from "./embed-bridge";
 
 type BookAction = (
   slug: string,
   input: unknown,
+  /** "widget" inside the website widget's iframe. */
+  source?: "page" | "widget",
 ) => Promise<Result<{ bookingId: string; manageToken: string }, string>>;
 
 /** Step 4: who's coming, then Confirm (docs/design/booking-flow/4-your-details). */
@@ -84,14 +87,18 @@ export function DetailsStep({
   const submit = handleSubmit((values) => {
     setFormError(null);
     startTransition(async () => {
-      const result = await book(slug, {
-        serviceId: service.id,
-        staffId: state.staffId,
-        startsAt: state.start,
-        customer: { name: values.name, email: values.email, phone: values.phone },
-        notes: values.notes,
-        customerTimezone: zone ?? undefined,
-      });
+      const result = await book(
+        slug,
+        {
+          serviceId: service.id,
+          staffId: state.staffId,
+          startsAt: state.start,
+          customer: { name: values.name, email: values.email, phone: values.phone },
+          notes: values.notes,
+          customerTimezone: zone ?? undefined,
+        },
+        bookingSource(),
+      );
       if (result.ok) {
         rememberManageToken(result.data.bookingId, result.data.manageToken);
         // Replace, not push: Back from the confirmation must not reopen a
