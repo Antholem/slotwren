@@ -36,6 +36,7 @@ pnpm db:start            # local Supabase (Docker), minus logflare/vector/edge-r
 pnpm db:reset            # recreate local DB from supabase/migrations
 pnpm db:seed             # Lumen Studio demo data (idempotent: replaces the demo business)
 pnpm jobs:dev            # Inngest dev server on :8288 (needs INNGEST_DEV=1 and pnpm dev on :3000)
+pnpm embed:build         # website widget → public/embed.js + embed/v/<hash>.js; fails at 10 kB gzipped
 
 pnpm check               # lint + typecheck + format:check + unit/component tests
 pnpm lint | typecheck | format | test
@@ -70,9 +71,9 @@ src/
                          layout.tsx is the shell; server actions per page call src/server/catalog
     b/[slug]/            public booking flow (URL state: lib/booking-page.ts), booked/[id] + .ics, opengraph-image
     m/[token]/           manage booking (reschedule / cancel)
-    embed/[slug]/        iframe target for the widget
     api/slots/[slug]/    open and taken times for the booking page (customer timezone)
     api/chat/[slug]/     AI receptionist: POST streams, GET = history; confirm/ (only AI write path), handoff/
+    api/embed/[slug]/    the widget's public config (CORS *, 403 outside "Allowed websites")
     api/webhooks/stripe/ billing webhooks
     api/inngest/         background jobs
   components/
@@ -97,7 +98,7 @@ src/
     email/send.ts        sendEmail(): Resend, or logs the email when RESEND_API_KEY is unset
     auth/ billing/ jobs/ supabase/ rate-limit.ts
                          auth/dashboard.ts: getDashboardContext() (user, business, role)
-embed/embed.ts           widget source, bundled by tsup to public/embed.js
+embed/embed.ts           widget source (plain TS, no deps); scripts/build-embed.ts → public/ (gitignored)
 scripts/seed.ts          Lumen Studio seed
 supabase/                config.toml, migrations/ (drizzle output + custom SQL)
 tests/                   unit/, components/, integration/, e2e/, support/
@@ -229,6 +230,15 @@ timezone? }`; history (tool calls included, in `ai_messages.parts`) is replayed 
   it off, the chat routes answer 503 `ai_unavailable` and the open chat says so. Transcripts
   are deleted 90 days after their last message (`server/ai/retention.ts`, daily Inngest job);
   bookings, customers and questions stay.
+- **Website widget** (`embed/embed.ts`, `lib/embed.ts`, Settings → Embed). The snippet loads
+  `/embed.js` (5-minute cache), which loads the content-hashed, immutable `/embed/v/<hash>.js`.
+  Shadow DOM only, no globals but the `__slotwren` queue. It frames `/b/<slug>?embed=1&host=<origin>`;
+  `components/booking/embed-bridge.tsx` posts only `slotwren:resize|close|booked` to that origin, and
+  the widget accepts them only from the app's origin and its own iframe. Never send customer data.
+  Framing: `proxy.ts` sets `frame-ancestors` from the business's allowed websites for `?embed=1`
+  (empty list: any http(s) site); every other page is `X-Frame-Options: DENY` + `frame-ancestors
+'none'` (`next.config.ts`). Bookings made in it have source `widget`; its chats, channel `widget`.
+  Playwright frames it from `tests/support/embed-host.mjs` on :3200.
 - **Commits.** Small, conventional (`feat(booking): …`, `fix(db): …`, `test: …`,
   `chore: …`, `docs: …`).
 
