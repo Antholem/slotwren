@@ -28,7 +28,8 @@ vi.mock("@/lib/supabase/browser", () => ({
         return channel;
       },
       subscribe(callback: (status: string) => void) {
-        callback("SUBSCRIBED");
+        // Like Supabase: the status arrives later, never during subscribe().
+        queueMicrotask(() => callback("SUBSCRIBED"));
         return channel;
       },
     };
