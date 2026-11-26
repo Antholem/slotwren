@@ -13,7 +13,8 @@ import { nextDate, zonedInstant, zonedParts } from "@/lib/time-off";
 import type { ChatModel } from "@/server/ai/model";
 import * as schema from "@/server/db/schema";
 
-import { bookingValues, connectTestDb, createFixtureBusiness } from "../support/db";
+import type { connectTestDb } from "../support/db";
+import { bookingValues, createFixtureBusiness } from "../support/db";
 
 /*
  * The AI receptionist's scripted conversations (tests/ai/scripts.ts) run
