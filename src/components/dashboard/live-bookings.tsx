@@ -3,7 +3,7 @@
 import type { RealtimeChannel, RealtimePostgresChangesPayload } from "@supabase/supabase-js";
 import type { Route } from "next";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { formatInZone } from "@/lib/dates";
@@ -18,6 +18,7 @@ type BookingRow = {
   starts_at: string;
   source: "page" | "widget" | "ai" | "manual";
   created_by_user_id: string | null;
+  created_at: string;
 };
 
 const SOURCE: Record<BookingRow["source"], string> = {
@@ -46,16 +47,24 @@ const MAX_RETRY_MS = 30_000;
  *
  * A dropped connection resubscribes with backoff; once it's back, the page
  * refreshes to catch up on anything missed meanwhile.
+ *
+ * Realtime reads the database's change log with some lag, so an INSERT made
+ * just before the page loaded can arrive after it subscribed. That booking is
+ * already on the page: it refreshes, but gets no "New booking" toast.
  */
 export function LiveBookings({
   businessId,
   userId,
   zone,
+  renderedAt,
 }: {
   businessId: string;
   userId: string;
   zone: string;
+  /** When the server rendered the dashboard (ISO): older bookings aren't new. */
+  renderedAt: string;
 }) {
+  const [since] = useState(() => Date.parse(renderedAt));
   const router = useRouter();
   const latest = useRef({ router, zone, userId });
   useEffect(() => {
@@ -79,6 +88,8 @@ export function LiveBookings({
     const announce = (row: BookingRow) => {
       // The member who booked it by hand already saw "Booked …".
       if (row.source === "manual" && row.created_by_user_id === latest.current.userId) return;
+      // Made before this dashboard was rendered: it's on the page already, not new.
+      if (Date.parse(row.created_at) < since) return;
       const when = formatInZone(new Date(row.starts_at), latest.current.zone, "EEE d MMM, HH:mm");
       toast(`New booking from ${SOURCE[row.source]}`, {
         // One toast per booking, however often the event arrives.
@@ -164,7 +175,7 @@ export function LiveBookings({
       if (channel) void supabase.removeChannel(channel);
       delete document.documentElement.dataset.live;
     };
-  }, [businessId]);
+  }, [businessId, since]);
 
   return null;
 }

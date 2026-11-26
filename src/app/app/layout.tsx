@@ -55,6 +55,8 @@ async function DashboardTopBar() {
         businessId={business.id}
         userId={user.id}
         zone={business.timezone}
+        // On the server's clock, like bookings.created_at (the browser's may be off).
+        renderedAt={new Date().toISOString()}
       />
     </>
   );
