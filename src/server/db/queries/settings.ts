@@ -183,3 +183,35 @@ export async function updateBusinessSettings(
     return { saved: true, movedTimeOff };
   });
 }
+
+/** Settings → Embed: the widget options and what decides the chat bubble. */
+export async function getEmbedOptions(claims: RlsClaims, businessId: string) {
+  return withRls(claims, async (tx) => {
+    const [row] = await tx
+      .select({
+        embed: sql<Record<string, unknown> | null>`${businesses.settings} -> 'embed'`,
+        brandColor: businesses.brandColor,
+        aiEnabled: businesses.aiEnabled,
+        plan: businesses.plan,
+      })
+      .from(businesses)
+      .where(eq(businesses.id, businessId));
+    return row ?? null;
+  });
+}
+
+/** Save the widget options (owners only, by RLS). False when nothing was updated. */
+export async function updateEmbedSettings(
+  claims: RlsClaims,
+  businessId: string,
+  embed: Record<string, unknown>,
+): Promise<boolean> {
+  return withRls(claims, async (tx) => {
+    const rows = await tx
+      .update(businesses)
+      .set({ settings: sql`${businesses.settings} || ${JSON.stringify({ embed })}::jsonb` })
+      .where(eq(businesses.id, businessId))
+      .returning({ id: businesses.id });
+    return rows.length > 0;
+  });
+}
