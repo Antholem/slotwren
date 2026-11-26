@@ -125,9 +125,9 @@ async function read(response: Response) {
   };
 }
 
-/** The first Tue–Sat at least `ahead` days from today, business-local. */
-function workingDate(ahead: number): string {
-  let date = nextDate(zonedParts(new Date(), ZONE).date, ahead);
+/** The first Tue–Sat at least `ahead` days after `from` (default today), business-local. */
+function workingDate(ahead: number, from = zonedParts(new Date(), ZONE).date): string {
+  let date = nextDate(from, ahead);
   while (![2, 3, 4, 5, 6].includes(new Date(`${date}T12:00:00Z`).getUTCDay())) {
     date = nextDate(date);
   }
@@ -141,7 +141,9 @@ describe("AI receptionist tools and Confirm", () => {
   let a: Awaited<ReturnType<typeof createFixtureBusiness>>;
   let b: Awaited<ReturnType<typeof createFixtureBusiness>>;
   const day = workingDate(3);
-  const laterDay = workingDate(5);
+  // Always a different day from `day`, whatever today is (from a Thursday,
+  // "3 days" and "5 days" both roll forward to the same Tuesday).
+  const laterDay = workingDate(2, day);
 
   async function makeLive(fixture: typeof a) {
     const businessId = fixture.business.id;

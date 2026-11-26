@@ -88,14 +88,29 @@ export type NewProposal = Omit<
   "id" | "businessId" | "state" | "settledAt" | "createdAt"
 >;
 
+/**
+ * A new proposal, replacing any still open in the same chat: the customer
+ * changed their mind ("Change"), so only the latest card can be confirmed.
+ */
 export const createProposal = adminQuery(
-  async (db, { businessId, values }: TenantScoped & { values: NewProposal }): Promise<Proposal> => {
-    const [row] = await db
-      .insert(aiProposals)
-      .values({ ...values, businessId })
-      .returning();
-    return row!;
-  },
+  async (db, { businessId, values }: TenantScoped & { values: NewProposal }): Promise<Proposal> =>
+    db.transaction(async (tx) => {
+      await tx
+        .update(aiProposals)
+        .set({ state: "failed", settledAt: sql`now()` })
+        .where(
+          and(
+            eq(aiProposals.businessId, businessId),
+            eq(aiProposals.conversationId, values.conversationId),
+            eq(aiProposals.state, "open"),
+          ),
+        );
+      const [row] = await tx
+        .insert(aiProposals)
+        .values({ ...values, businessId })
+        .returning();
+      return row!;
+    }),
 );
 
 /** A proposal of this business, whatever its state. */

@@ -55,7 +55,7 @@ const fail = (error: Failure["error"], message: string, extra: Partial<Failure> 
 const MESSAGES = {
   notFound: "We couldn't find that booking request. Ask the assistant again.",
   expired: "This request has expired. Ask the assistant for the time again.",
-  used: "This request was already used. Ask the assistant if you'd like to change anything.",
+  used: "This request was replaced or already used. Use the latest card, or ask the assistant again.",
   busy: "We're still confirming this one. Give it a moment, then check the chat.",
   details: "Add your name and email to book.",
   taken: "That time was just taken. Here are other times you can pick instead.",

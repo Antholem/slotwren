@@ -28,8 +28,9 @@ export const LIMITS = {
   // few seconds at most; the per-business cap bounds spend if many IPs pile on.
   "chat:ip": { limit: 20, windowSec: 60 },
   "chat:business": { limit: 300, windowSec: 60 },
-  // Every business shares the AI provider's key and its daily quota (env).
-  "chat:global": { limit: env.AI_DAILY_REQUEST_CAP, windowSec: 86_400 },
+  // Every business shares the AI provider's key and its daily quota (env): one
+  // count per model call, not per message.
+  "ai:calls": { limit: env.AI_DAILY_MODEL_CALL_CAP, windowSec: 86_400 },
   // "Message the team": a person might send one or two; more is spam.
   "handoff:ip": { limit: 3, windowSec: 3_600 },
   "handoff:email": { limit: 3, windowSec: 86_400 },
@@ -106,7 +107,7 @@ export const RATE_LIMIT_MESSAGES = {
     "This business is taking a lot of bookings right now. Try again in a few minutes.",
   "chat:ip": "You're sending messages very quickly. Wait a moment, then try again.",
   "chat:business": "The assistant is very busy right now. Wait a moment, then try again.",
-  "chat:global": "The assistant isn't available right now. You can still book on this page.",
+  "ai:calls": "The assistant isn't available right now. You can still book on this page.",
   "handoff:ip": "You've sent a few questions already. Try again in an hour.",
   "handoff:email":
     "You've sent a few questions today. The team will reply by email; try again tomorrow.",

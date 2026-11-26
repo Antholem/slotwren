@@ -85,7 +85,12 @@ pnpm ai:ask "How much is a haircut?"
 pnpm ai:ask "Anything Saturday morning?" <conversationId>   # continue the same chat
 ```
 
-It prints the reply, the conversation id and any tool calls. `AI_ASK_URL` (default
+It prints the reply, the conversation id and any tool calls.
+
+`pnpm test:integration` includes 15 scripted conversations (`tests/ai/`) with a mock model.
+`pnpm ai:eval` runs the same scripts against the real model `AI_PROVIDER` / `AI_MODEL` pick and
+prints pass/fail per script: run it before switching providers (local Supabase needed; never in
+CI, but there's a manual **AI eval** GitHub workflow that uses the repo's key secret). `AI_ASK_URL` (default
 `http://localhost:3000`) and `AI_ASK_SLUG` (default `lumen-studio`) point it elsewhere.
 On the booking page, businesses with AI on and the Pro plan get an "Ask us anything" button
 (Lumen Studio has both). To work on the chat UI without a key, set `AI_PROVIDER=mock`: a
