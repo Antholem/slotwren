@@ -76,7 +76,7 @@ jobs:
       # The AI receptionist's scripted model: CI has no AI keys.
       AI_PROVIDER: mock
       # One server answers every E2E chat: keep the shared daily cap out of the way.
-      AI_DAILY_REQUEST_CAP: "100000"
+      AI_DAILY_MODEL_CALL_CAP: "100000"
     steps:
       - uses: actions/checkout@v5
       - uses: pnpm/action-setup@v4

@@ -93,9 +93,12 @@ export async function checkBudget(businessId: string, now = new Date()): Promise
   return { state, used, budget: business.budget, period };
 }
 
-/** The shared daily cap: one count per customer message, across every business. */
-export async function withinDailyCap(businessId: string, now = Date.now()): Promise<boolean> {
-  const result = await limitAll([["chat:global", "all"]], now);
+/**
+ * The shared daily cap: take one model call from it, across every business.
+ * Called before the first call of a turn and again before each further step.
+ */
+export async function allowModelCall(businessId: string, now = Date.now()): Promise<boolean> {
+  const result = await limitAll([["ai:calls", "all"]], now);
   if (!result.ok) {
     await recordGuardrailEvent({
       businessId,

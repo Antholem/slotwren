@@ -1,6 +1,5 @@
 import {
   createUIMessageStreamResponse,
-  isStepCount,
   type ModelMessage,
   streamText,
   toUIMessageStream,
@@ -19,8 +18,8 @@ import {
 } from "@/lib/chat";
 import { SLUG_PATTERN } from "@/lib/slug";
 import { isValidTimeZone } from "@/lib/timezones";
-import { RESTING_MESSAGE, UNAVAILABLE_MESSAGE } from "@/lib/ai-guardrails";
-import { checkBudget, describe, isProviderLimited, withinDailyCap } from "@/server/ai/guardrails";
+import { CAPPED_MESSAGE, RESTING_MESSAGE, UNAVAILABLE_MESSAGE } from "@/lib/ai-guardrails";
+import { allowModelCall, checkBudget, describe, isProviderLimited } from "@/server/ai/guardrails";
 import { getChatModel } from "@/server/ai/model";
 import { toChatMessages } from "@/server/ai/history";
 import { buildSystemPrompt } from "@/server/ai/prompt";
@@ -175,10 +174,11 @@ export async function POST(request: Request, { params }: RouteContext<"/api/chat
     );
   }
 
-  // The business's monthly budget first (resting costs nothing), then the shared cap.
+  // The business's monthly budget first (resting costs nothing), then the
+  // shared cap: this takes the turn's first model call from it.
   const budget = await checkBudget(businessId);
   if (budget.state === "exhausted") return refuse(503, "ai_resting", RESTING_MESSAGE);
-  if (!(await withinDailyCap(businessId))) {
+  if (!(await allowModelCall(businessId))) {
     return refuse(503, "ai_unavailable", UNAVAILABLE_MESSAGE);
   }
 
@@ -214,13 +214,21 @@ export async function POST(request: Request, { params }: RouteContext<"/api/chat
   const now = new Date();
   const customerTimezone = parsed.data.timezone ?? context.business.timezone;
 
+  let capped = false;
   const result = streamText({
     model: chat.model,
     instructions: buildSystemPrompt(context, now, { customerTimezone, proposals }),
     messages,
     // Bound to this business and conversation here, never by the model.
     tools: receptionistTools({ businessId, conversationId, customerTimezone, now }),
-    stopWhen: isStepCount(MAX_STEPS),
+    // Each further step is another model call: at most MAX_STEPS, and only
+    // while the shared cap allows. Capped mid-turn, the reply ends politely.
+    stopWhen: async ({ steps }) => {
+      if (steps.length >= MAX_STEPS) return true;
+      if (await allowModelCall(businessId)) return false;
+      capped = true;
+      return true;
+    },
     timeout: { totalMs: chat.timeoutMs },
     maxOutputTokens: MAX_OUTPUT_TOKENS,
     maxRetries: 1,
@@ -243,8 +251,7 @@ export async function POST(request: Request, { params }: RouteContext<"/api/chat
     },
     onAbort: () => console.error("[ai-chat] Model timed out", log, `${chat.timeoutMs} ms`),
     onEnd: async ({ steps, responseMessages, totalUsage }) => {
-      const reply = steps
-        .map((step) => step.text.trim())
+      const reply = [...steps.map((step) => step.text.trim()), capped ? CAPPED_MESSAGE : ""]
         .filter(Boolean)
         .join("\n\n");
       if (!reply && !steps.some((step) => step.toolCalls.length > 0)) {
@@ -278,6 +285,12 @@ export async function POST(request: Request, { params }: RouteContext<"/api/chat
       stream: result.stream.pipeThrough(
         new TransformStream<TextStreamPart<ToolSet>, TextStreamPart<ToolSet>>({
           transform(part, controller) {
+            if (part.type === "finish" && capped) {
+              // Stopped between tool steps by the shared cap: say so, don't just go quiet.
+              controller.enqueue({ type: "text-start", id: "capped" });
+              controller.enqueue({ type: "text-delta", id: "capped", text: CAPPED_MESSAGE });
+              controller.enqueue({ type: "text-end", id: "capped" });
+            }
             controller.enqueue(
               part.type === "abort" ? { type: "error", error: new Error("Timed out") } : part,
             );

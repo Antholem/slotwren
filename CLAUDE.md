@@ -212,7 +212,8 @@ timezone? }`; history (tool calls included, in `ai_messages.parts`) is replayed 
   call: the business's monthly token budget (`businesses.ai_monthly_token_budget`, default
   500,000; month = the 1st to the 1st in the business timezone; owners emailed once at 80%; at
   100% the chat answers 503 `ai_resting` and the hand-off form still works) and the shared daily
-  cap `AI_DAILY_REQUEST_CAP` (default 200 messages, 503 `ai_unavailable`). A provider 429 /
+  cap `AI_DAILY_MODEL_CALL_CAP` (default 450 **model calls** a day, taken before each step; capped
+  mid-turn the reply ends with `CAPPED_MESSAGE`; otherwise 503 `ai_unavailable`). A provider 429 /
   quota / overload error shows `UNAVAILABLE_MESSAGE`, logged by name and status only. Per
   message: last 12 turns, 5 model calls, 400 output tokens. Replies pass through
   `sanitizeReply()` (plain text, only the business's own links) wherever they're shown.

@@ -14,6 +14,10 @@ export const BUDGET_WARNING_RATIO = 0.8;
 export const RESTING_MESSAGE =
   "The assistant is resting for this month. You can still book on this page.";
 
+/** Ends a reply cut short because the shared daily cap was reached between tool steps. */
+export const CAPPED_MESSAGE =
+  "I've had to stop there: the assistant is very busy right now. You can still book on this page.";
+
 /** Shown when the shared daily cap is reached or the AI provider refuses (429, quota, overload). */
 export const UNAVAILABLE_MESSAGE =
   "The assistant isn't available right now. You can still book on this page.";
