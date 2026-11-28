@@ -188,10 +188,15 @@ These are hard rules. If a task seems to need breaking one, stop and ask.
   transaction, and never fails the booking. Templates in `src/emails` share `components/`.
 - **AI receptionist** (`/api/chat/[slug]`). The model comes from `getChatModel()`
   (`server/ai/model.ts`; no key → 503, never a crash). The system prompt is built by the pure
-  `buildSystemPrompt()` from `getAiContext()`: one business's public data, all inside one
-  escaped `<business_data>` JSON block. The client sends only `{ conversationId?, text,
-timezone? }`; history (tool calls included, in `ai_messages.parts`) is replayed from the
-  database, never taken from the request. Runs only when `ai_enabled` **and** plan is Pro.
+  `systemPromptParts()` from `getAiContext()`: a `stable` part (rules plus one business's
+  public data, all inside one escaped `<business_data>` JSON block; cached on Claude) and a
+  `live` part (clock, calendar, booking status). FAQs are cut at 8,000 characters and service
+  descriptions at 300 (`PROMPT_LIMITS`). The client sends only `{ conversationId?, text,
+timezone? }`, as JSON from the same origin (`server/same-site.ts`, on every chat POST);
+  history (tool calls included, in `ai_messages.parts`) is replayed from the database, never
+  taken from the request. A reply cut short is saved as far as it got (`interrupted`), and
+  every call's usage is saved (a `system` row when the reply was empty). Runs only when
+  `ai_enabled` **and** plan is Pro.
   Never log prompts, messages or keys. Tests use `MockLanguageModelV4` (`ai/test`); CI has
   no AI keys. Try it live with `pnpm ai:ask "<question>"`.
 - **AI tools** (`server/ai/tools.ts`, ADR 0005). Read: `listServices`, `checkAvailability`,
@@ -213,11 +218,19 @@ timezone? }`; history (tool calls included, in `ai_messages.parts`) is replayed 
 - **AI guardrails** (`server/ai/guardrails.ts`, `lib/ai-guardrails.ts`), all before any model
   call: the business's monthly token budget (`businesses.ai_monthly_token_budget`, default
   500,000; month = the 1st to the 1st in the business timezone; owners emailed once at 80%; at
-  100% the chat answers 503 `ai_resting` and the hand-off form still works) and the shared daily
-  cap `AI_DAILY_MODEL_CALL_CAP` (default 450 **model calls** a day, taken before each step; capped
-  mid-turn the reply ends with `CAPPED_MESSAGE`; otherwise 503 `ai_unavailable`). A provider 429 /
-  quota / overload error shows `UNAVAILABLE_MESSAGE`, logged by name and status only. Per
-  message: last 12 turns, 5 model calls, 400 output tokens. Replies pass through
+  100% the chat answers 503 `ai_resting` and the hand-off form still works), with each call's
+  estimated tokens **reserved** first in the shared store (`reserveTokens`, released once the
+  usage is saved) so parallel messages can't overshoot it; the shared daily cap
+  `AI_DAILY_MODEL_CALL_CAP` (default 450 **model calls** a day, taken before each step) and one
+  business's share of it, `AI_BUSINESS_CALL_SHARE` (default 0.25); capped mid-turn the reply
+  ends with `CAPPED_MESSAGE`, otherwise 503 `ai_unavailable`. The `ai:*` limits and the
+  reservations **fail closed**, and on Vercel Production the chat stays off without Upstash
+  (`aiStoreReady`). Per IP: 20 messages a minute, 40 a day, 15 new chats a day; per
+  conversation: 20 messages and `CONVERSATION_TOKEN_LIMIT` (80,000) tokens (422
+  `conversation_limit`). A provider 429 / quota / overload error shows `UNAVAILABLE_MESSAGE`,
+  logged by name and status only. Per message: last 12 turns, 5 model calls, 400 output
+  tokens. Integration tests always use the in-memory limiter, even when `.env.local` names
+  Upstash (`vitest.config.mts`). Replies pass through
   `sanitizeReply()` (plain text, only the business's own links) wherever they're shown.
   Hand-offs: honeypot `website`, 3/hour per IP, 3/day per email, 3 open per customer. What
   happened is in `ai_guardrail_events` (server writes, members read; once-per-`period` kinds
