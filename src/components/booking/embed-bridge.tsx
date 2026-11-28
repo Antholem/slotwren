@@ -55,17 +55,20 @@ export function EmbedBridge() {
     observer.observe(document.body);
 
     // Escape closes the widget in one press, the chat open or not (it closes with
-    // it). Only another dialog on the page (a sheet, an alert) takes Escape first.
+    // it). Heard in the capture phase, before Radix takes it (and prevents its
+    // default) to close the chat. Another dialog (a sheet, an alert) or an open
+    // list or menu takes Escape first.
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== "Escape" || event.defaultPrevented) return;
+      if (document.querySelector('[role="listbox"], [role="menu"]')) return;
       const dialogs = document.querySelectorAll('[role="dialog"], [role="alertdialog"]');
       if ([...dialogs].some((d) => !d.hasAttribute("data-chat-panel"))) return;
       post(host, { type: "slotwren:close" });
     };
-    window.addEventListener("keydown", onKey);
+    window.addEventListener("keydown", onKey, true);
     return () => {
       observer.disconnect();
-      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("keydown", onKey, true);
     };
   }, []);
 
