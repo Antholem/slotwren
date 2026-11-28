@@ -125,7 +125,10 @@ describe("website widget", () => {
       await setBusiness({
         settings: { embed: { allowedOrigins: ["https://www.harbor.example"] } },
       });
-      expect((await config("https://www.harbor.example")).status).toBe(200);
+      const allowed = await config("https://www.harbor.example");
+      expect(allowed.status).toBe(200);
+      // The answer depends on the Origin: never kept by a shared cache.
+      expect(allowed.headers.get("cache-control")).toBe("private, max-age=60");
       const refused = await config("https://copycat.example");
       expect(refused.status).toBe(403);
       expect(refused.headers.get("cache-control")).toBe("no-store");

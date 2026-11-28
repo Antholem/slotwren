@@ -89,9 +89,15 @@ export const recordGuardrailEvent = adminQuery(
   },
 );
 
-/** Questions this email has waiting for the team at this business. */
-export const openQuestionsFor = adminQuery(
-  async (db, { businessId, email }: TenantScoped & { email: string }): Promise<number> => {
+/**
+ * Questions this chat has waiting for the team. By chat, not by email: the
+ * email is unverified, so counting by it would let anyone block a customer.
+ */
+export const openQuestionsIn = adminQuery(
+  async (
+    db,
+    { businessId, conversationId }: TenantScoped & { conversationId: string },
+  ): Promise<number> => {
     const [row] = await db
       .select({ n: sql<number>`count(*)::int` })
       .from(handoffRequests)
@@ -99,7 +105,7 @@ export const openQuestionsFor = adminQuery(
         and(
           eq(handoffRequests.businessId, businessId),
           eq(handoffRequests.status, "open"),
-          sql`lower(${handoffRequests.email}) = lower(${email})`,
+          eq(handoffRequests.conversationId, conversationId),
         ),
       );
     return row?.n ?? 0;

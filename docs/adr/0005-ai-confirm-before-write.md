@@ -31,9 +31,12 @@ real commitments with emails, reminders and staff time behind them.
      nothing written.
    - Slot just taken (23P01 or no longer offered): 409 with fresh times near it.
 4. **Changing an existing booking needs the booking code and the email it was made with**,
-   checked when proposing and again by the service at Confirm (`BookingAccess` kind `chat`,
-   treated like a manage-link customer: the cancellation window applies). A wrong code and a
-   wrong email get the same answer, and nothing about the booking leaks.
+   checked by the tool when proposing. At Confirm the route checks again that the booking still
+   belongs to that email (`bookingBelongsTo`; the code was proven with it and the proposal is
+   bound to this conversation), then the service applies the change with `BookingAccess` kind
+   `chat`: treated like a manage-link customer, so the cancellation window and the booking's
+   status are re-checked there. A wrong code and a wrong email get the same answer, and nothing
+   about the booking leaks.
 5. **The model learns outcomes from the system, not from the chat.** Each turn's system prompt
    lists this conversation's proposals and what became of them (from `ai_proposals`). Text a
    customer types ("it's confirmed") can't fake that section.

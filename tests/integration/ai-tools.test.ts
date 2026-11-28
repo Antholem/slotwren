@@ -17,6 +17,7 @@ import {
   proposeReschedule,
   type ReceptionistScope,
 } from "@/server/ai/receptionist";
+import type * as Proposals from "@/server/db/queries/public/ai-proposals";
 import * as schema from "@/server/db/schema";
 
 import { bookingValues, connectTestDb, createFixtureBusiness } from "../support/db";
@@ -33,6 +34,19 @@ import { bookingValues, connectTestDb, createFixtureBusiness } from "../support/
 
 const model = vi.hoisted(() => ({ current: null as ChatModel | null }));
 vi.mock("@/server/ai/model", () => ({ getChatModel: () => model.current }));
+
+// Lets a test break a step that runs after Confirm has committed the booking.
+const breakAfterCommit = vi.hoisted(() => ({ on: false }));
+vi.mock("@/server/db/queries/public/ai-proposals", async (importOriginal) => {
+  const original = await importOriginal<typeof Proposals>();
+  return {
+    ...original,
+    setConversationOutcome: (async (input) => {
+      if (breakAfterCommit.on) throw new Error("Database went away");
+      return original.setConversationOutcome(input);
+    }) satisfies typeof original.setConversationOutcome,
+  };
+});
 
 const ZONE = "Asia/Manila";
 const finish = (unified: "stop" | "tool-calls") => ({
@@ -696,5 +710,60 @@ describe("AI receptionist tools and Confirm", () => {
     });
     expect(out.status).toBe("not_found");
     expect(JSON.stringify(out)).not.toContain(booking!.code);
+  });
+
+  it("at Confirm, the booking must still be the one the customer proved with their email", async () => {
+    const [booking] = await db
+      .insert(schema.bookings)
+      .values(bookingValues(a, at(laterDay, "13:00")))
+      .returning();
+    const id = await conversation(a);
+    // As if the booking's customer changed after the proposal was made.
+    const [proposal] = await db
+      .insert(schema.aiProposals)
+      .values({
+        businessId: a.business.id,
+        conversationId: id,
+        kind: "cancel",
+        bookingId: booking!.id,
+        serviceId: a.service.id,
+        staffId: a.staff.id,
+        startsAt: booking!.startsAt,
+        endsAt: booking!.endsAt,
+        priceCents: 3500,
+        customerName: "Someone",
+        customerEmail: "someone-else@example.com",
+        expiresAt: new Date(Date.now() + 60_000),
+      })
+      .returning();
+    expect(await confirm(a.business.slug, id, proposal!.id)).toMatchObject({
+      status: 404,
+      body: { ok: false, error: "not_found" },
+    });
+    const [still] = await db
+      .select()
+      .from(schema.bookings)
+      .where(eq(schema.bookings.id, booking!.id));
+    expect(still!.status).toBe("confirmed");
+    expect((await proposalsOf(id))[0]).toMatchObject({ state: "failed" });
+  });
+
+  it("a step failing after the booking committed still answers booked, never an error", async () => {
+    const id = await conversation(a);
+    const card = await propose(a, id, "15:00");
+    const before = await bookingsOf(a);
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    breakAfterCommit.on = true;
+    try {
+      const result = await confirm(a.business.slug, id, card.proposalId);
+      expect(result.status).toBe(200);
+      expect(result.body).toMatchObject({ ok: true, kind: "book", card: null });
+      expect(result.body.ok && result.body.message).toMatch(/^Booked. Booking code SW-/);
+    } finally {
+      breakAfterCommit.on = false;
+      errors.mockRestore();
+    }
+    expect(await bookingsOf(a)).toBe(before + 1);
+    expect((await proposalsOf(id))[0]).toMatchObject({ state: "confirmed" });
   });
 });

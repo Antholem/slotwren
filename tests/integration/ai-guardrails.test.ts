@@ -11,6 +11,7 @@ import { monthWindow, RESTING_MESSAGE, UNAVAILABLE_MESSAGE } from "@/lib/ai-guar
 import { mockReceptionistModel } from "@/server/ai/mock-model";
 import type { ChatModel } from "@/server/ai/model";
 import * as schema from "@/server/db/schema";
+import { RATE_LIMIT_MESSAGES } from "@/server/rate-limit";
 
 import { connectTestDb, createFixtureBusiness } from "../support/db";
 
@@ -303,12 +304,16 @@ describe("AI receptionist guardrails", () => {
 
   describe("hand-off spam", () => {
     const email = () => `spam-${randomUUID().slice(0, 8)}@example.com`;
+    // A new chat each time unless one is given: the per-chat limits have their own tests.
     const ask = (from: string, address: string, extra: Record<string, unknown> = {}) =>
-      handoff(
-        a.business.slug,
-        { conversationId, name: "Sam", email: address, message: "Hi?", ...extra },
-        from,
-      );
+      handoff(a.business.slug, { name: "Sam", email: address, message: "Hi?", ...extra }, from);
+    const newChat = async () =>
+      (
+        await db
+          .insert(schema.aiConversations)
+          .values({ businessId: a.business.id, channel: "page" })
+          .returning()
+      )[0]!.id;
 
     it("3 an hour per IP", async () => {
       const from = nextIp();
@@ -318,32 +323,59 @@ describe("AI receptionist guardrails", () => {
       expect(await events("handoff_limited")).not.toHaveLength(0);
     });
 
-    it("3 a day per email per business, whatever the IP", async () => {
+    it("3 a day per email from one IP; someone else typing that email isn't blocked", async () => {
       const address = email();
-      for (let i = 0; i < 3; i++) {
-        // Answered meanwhile, so the open-question cap isn't what stops it.
+      const from = nextIp();
+      // Only the clock is faked: an hour passes, so the per-IP hourly limit isn't what stops it.
+      vi.useFakeTimers({ toFake: ["Date"], now: Date.now() });
+      try {
+        for (let i = 0; i < 3; i++) {
+          expect((await ask(from, address)).status).toBe(200);
+          vi.setSystemTime(Date.now() + 61 * 60_000);
+        }
+        expect(await ask(from, address.toUpperCase())).toMatchObject({ status: 429 });
+        expect((await events("handoff_limited")).at(-1)?.detail).toEqual({
+          limit: "handoff:email",
+        });
         expect((await ask(nextIp(), address)).status).toBe(200);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("3 a day per chat", async () => {
+      const chat = await newChat();
+      for (let i = 0; i < 3; i++) {
+        expect((await ask(nextIp(), email(), { conversationId: chat })).status).toBe(200);
+        // Answered meanwhile, so the open-question cap isn't what stops it.
         await db
           .update(schema.handoffRequests)
           .set({ status: "replied" })
-          .where(eq(schema.handoffRequests.email, address));
+          .where(eq(schema.handoffRequests.conversationId, chat));
       }
-      expect((await ask(nextIp(), address.toUpperCase())).status).toBe(429);
+      expect(await ask(nextIp(), email(), { conversationId: chat })).toMatchObject({
+        status: 429,
+        body: { message: RATE_LIMIT_MESSAGES["handoff:conversation"] },
+      });
     });
 
-    it("at most 3 open questions per customer", async () => {
+    it("at most 3 open questions per chat, not per email (which nobody verified)", async () => {
       const address = email();
+      const chat = await newChat();
       await db.insert(schema.handoffRequests).values(
         [1, 2, 3].map((n) => ({
           businessId: a.business.id,
+          conversationId: chat,
           name: "Sam",
           email: address,
           message: `Earlier ${n}`,
         })),
       );
-      const refused = await ask(nextIp(), address);
+      const refused = await ask(nextIp(), address, { conversationId: chat });
       expect(refused).toMatchObject({ status: 429, body: { ok: false } });
-      expect(refused.body.message).toMatch(/already have 3 questions waiting/);
+      expect(refused.body.message).toMatch(/This chat already has 3 questions waiting/);
+      // The same address from another chat still gets through.
+      expect((await ask(nextIp(), address)).status).toBe(200);
     });
 
     it("a filled honeypot looks sent but saves nothing", async () => {
@@ -379,6 +411,19 @@ describe("AI receptionist guardrails", () => {
         .from(schema.customers)
         .where(eq(schema.customers.id, a.customer.id));
       expect(customer).toMatchObject({ name: "Ana Santos", phone: "+63 917 000 1111" });
+
+      // The question shows on her profile (marked unverified there), but the chat
+      // isn't made hers: anyone can type her address.
+      const [question] = await db
+        .select()
+        .from(schema.handoffRequests)
+        .where(eq(schema.handoffRequests.message, "Change my name?"));
+      expect(question).toMatchObject({ customerId: a.customer.id, conversationId });
+      const [chat] = await db
+        .select()
+        .from(schema.aiConversations)
+        .where(eq(schema.aiConversations.id, conversationId));
+      expect(chat).toMatchObject({ outcome: "handed_off", customerId: null });
     });
   });
 });

@@ -9,7 +9,8 @@ import { type EmbedMessage, normalizeOrigin } from "@/lib/embed";
  * The booking page inside the website widget (/b/<slug>?embed=1&host=<origin>,
  * see embed/embed.ts). Remembers it's embedded for this tab (the booking flow
  * moves on to other pages), and tells the host page three things, only ever
- * to the host's own origin: how tall it is (inline mode), "close" on Escape,
+ * to the host's own origin: how tall it is (inline mode), "close" on Escape
+ * (one press, even with the chat open),
  * and "booked" once a booking is made. Never anything about the customer.
  */
 
@@ -53,16 +54,21 @@ export function EmbedBridge() {
     });
     observer.observe(document.body);
 
-    // Escape closes the widget, unless something on the page (a sheet, the chat) handles it first.
+    // Escape closes the widget in one press, the chat open or not (it closes with
+    // it). Heard in the capture phase, before Radix takes it (and prevents its
+    // default) to close the chat. Another dialog (a sheet, an alert) or an open
+    // list or menu takes Escape first.
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== "Escape" || event.defaultPrevented) return;
-      if (document.querySelector('[role="dialog"], [role="alertdialog"]')) return;
+      if (document.querySelector('[role="listbox"], [role="menu"]')) return;
+      const dialogs = document.querySelectorAll('[role="dialog"], [role="alertdialog"]');
+      if ([...dialogs].some((d) => !d.hasAttribute("data-chat-panel"))) return;
       post(host, { type: "slotwren:close" });
     };
-    window.addEventListener("keydown", onKey);
+    window.addEventListener("keydown", onKey, true);
     return () => {
       observer.disconnect();
-      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("keydown", onKey, true);
     };
   }, []);
 

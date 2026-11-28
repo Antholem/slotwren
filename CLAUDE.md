@@ -214,7 +214,10 @@ timezone? }`, as JSON from the same origin (`server/same-site.ts`, on every chat
   refresh (`server/ai/history.ts`). Replies are announced once finished (one polite live
   region). Confirm cards collect the name and email the chat didn't get. Hand-off:
   `offerHandoff` shows a form; `POST /api/chat/[slug]/handoff` saves an open question on the
-  customer's profile. Playwright runs with `AI_PROVIDER=mock` (`server/ai/mock-model.ts`).
+  customer's profile (shown as "email not verified" everywhere, Today included) and emails the
+  owners after the response (`server/ai/handoff-notify.ts`, Reply-To the customer, 5 an hour per
+  business). The address is unverified: a hand-off never links the chat to an existing customer.
+  Playwright runs with `AI_PROVIDER=mock` (`server/ai/mock-model.ts`).
 - **AI guardrails** (`server/ai/guardrails.ts`, `lib/ai-guardrails.ts`), all before any model
   call: the business's monthly token budget (`businesses.ai_monthly_token_budget`, default
   500,000; month = the 1st to the 1st in the business timezone; owners emailed once at 80%; at
@@ -232,7 +235,9 @@ timezone? }`, as JSON from the same origin (`server/same-site.ts`, on every chat
   tokens. Integration tests always use the in-memory limiter, even when `.env.local` names
   Upstash (`vitest.config.mts`). Replies pass through
   `sanitizeReply()` (plain text, only the business's own links) wherever they're shown.
-  Hand-offs: honeypot `website`, 3/hour per IP, 3/day per email, 3 open per customer. What
+  Hand-offs: their own bucket per business (`handoff:business`, never the booking limits),
+  honeypot `website`, 3/hour per IP, 3/day per email _from one IP_, 3/day and 3 open per chat
+  (never counted by email alone, which anyone can type). What
   happened is in `ai_guardrail_events` (server writes, members read; once-per-`period` kinds
   use a unique index).
 - **AI dashboard** (`/app/ai`). Transcripts (filters, search, page and the open one `?c=` in
@@ -248,6 +253,9 @@ timezone? }`, as JSON from the same origin (`server/same-site.ts`, on every chat
   Shadow DOM only, no globals but the `__slotwren` queue. It frames `/b/<slug>?embed=1&host=<origin>`;
   `components/booking/embed-bridge.tsx` posts only `slotwren:resize|close|booked` to that origin, and
   the widget accepts them only from the app's origin and its own iframe. Never send customer data.
+  While its panel is open the host page is `inert`; one Escape closes it, chat open or not (the
+  chat panel is marked `data-chat-panel`); focus rings are white inside near-black, for any site.
+  The config (`/api/embed/<slug>`) is `public` cached only without an allowed list, else `private`.
   Framing: `proxy.ts` sets `frame-ancestors` from the business's allowed websites for `?embed=1`
   (empty list: any http(s) site); every other page is `X-Frame-Options: DENY` + `frame-ancestors
 'none'` (`next.config.ts`). Bookings made in it have source `widget`; its chats, channel `widget`.
