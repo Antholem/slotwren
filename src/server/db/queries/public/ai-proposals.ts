@@ -274,3 +274,31 @@ export const setConversationOutcome = adminQuery(
       );
   },
 );
+
+/**
+ * Whether the booking still belongs to `email` (the one the customer proved
+ * with the code when proposing): checked again at Confirm, so a booking whose
+ * customer changed meanwhile can't be moved or cancelled from the chat.
+ */
+export const bookingBelongsTo = adminQuery(
+  async (
+    db,
+    { businessId, bookingId, email }: TenantScoped & { bookingId: string; email: string },
+  ): Promise<boolean> => {
+    const [row] = await db
+      .select({ id: bookings.id })
+      .from(bookings)
+      .innerJoin(
+        customers,
+        and(eq(customers.id, bookings.customerId), eq(customers.businessId, businessId)),
+      )
+      .where(
+        and(
+          eq(bookings.id, bookingId),
+          eq(bookings.businessId, businessId),
+          sql`lower(${customers.email}) = lower(${email})`,
+        ),
+      );
+    return row !== undefined;
+  },
+);

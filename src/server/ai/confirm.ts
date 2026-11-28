@@ -13,6 +13,7 @@ import {
 } from "@/server/booking/service";
 import { saveMessage } from "@/server/db/queries/public/ai-chat";
 import {
+  bookingBelongsTo,
   bookingCode,
   claimProposal,
   findProposal,
@@ -229,6 +230,23 @@ export async function confirmProposal({
     customer = { name, email, phone: card ? card.data.phone : proposal.customerPhone };
   }
 
+  // A change to an existing booking: it must still be the customer's who proved it
+  // (code and email) when proposing. Checked again here, not only in the tool.
+  if (proposal.kind !== "book") {
+    const theirs =
+      proposal.bookingId !== null &&
+      proposal.customerEmail !== null &&
+      (await bookingBelongsTo({
+        businessId,
+        bookingId: proposal.bookingId,
+        email: proposal.customerEmail,
+      }));
+    if (!theirs) {
+      await settleProposal({ businessId, proposalId, state: "failed", now });
+      return fail("not_found", MESSAGES.notFound);
+    }
+  }
+
   let outcome: Awaited<ReturnType<typeof apply>>;
   try {
     outcome = await apply(proposal, customer, now);
@@ -238,51 +256,11 @@ export async function confirmProposal({
     throw error;
   }
 
+  // Committed: from here on nothing may turn it into an error for the customer.
+  if (outcome.ok) return afterCommit(slug, proposal, outcome, customer, now);
+
   const page = await receptionistPage(businessId);
   const zone = proposal.customerTimezone ?? page.business.timezone;
-  const service = page.services.find((s) => s.id === proposal.serviceId)?.name ?? "Appointment";
-  const staff = page.staff.find((s) => s.id === proposal.staffId)?.name ?? "our team";
-  const when = whenLabel(proposal.startsAt, zone);
-
-  if (outcome.ok) {
-    await settleProposal({
-      businessId,
-      proposalId,
-      state: "confirmed",
-      bookingId: outcome.bookingId,
-      customer: customer ?? undefined,
-      now,
-    });
-    const message =
-      proposal.kind === "book"
-        ? `Booked: ${service} with ${staff}, ${when}. Booking code ${outcome.code}. A confirmation email is on its way.`
-        : proposal.kind === "reschedule"
-          ? `Moved: ${service} with ${staff} is now ${when}. Booking code ${outcome.code}. An email with the new time is on its way.`
-          : `Cancelled: ${service} on ${when} (booking ${outcome.code}). A cancellation email is on its way.`;
-    if (proposal.kind === "book") {
-      await setConversationOutcome({ businessId, conversationId, outcome: "booked" });
-    }
-    const booked = await confirmedCard(
-      slug,
-      proposal,
-      outcome,
-      { service, staff },
-      customer?.email ?? proposal.customerEmail,
-      zone,
-      page.business.cancellationWindowHours,
-    );
-    await record(proposal, message, { confirmed: true, card: booked });
-    return {
-      ok: true,
-      kind: proposal.kind,
-      bookingId: outcome.bookingId,
-      code: outcome.code,
-      manageToken: outcome.manageToken,
-      message,
-      card: booked,
-    };
-  }
-
   await settleProposal({ businessId, proposalId, state: "failed", now });
   const error = FAILURE_FOR[outcome.error.code];
   if (error !== "slot_taken") {
@@ -306,6 +284,86 @@ export async function confirmProposal({
     { confirmed: false, error, alternatives },
   );
   return fail("slot_taken", message, { alternatives });
+}
+
+type Committed = { bookingId: string; code: string; manageToken: string | null };
+
+/**
+ * The change is committed: settle the proposal, mark the chat, build the
+ * booked card and record it. A failure in any of that is logged and the
+ * customer still hears it worked (with no card, as for a second tap), never
+ * "something went wrong" about a booking that exists.
+ */
+async function afterCommit(
+  slug: string,
+  proposal: Proposal,
+  outcome: Committed,
+  customer: Customer | null,
+  now: Date,
+): Promise<ConfirmResponse> {
+  const { businessId, id: proposalId, conversationId } = proposal;
+  const done = {
+    ok: true as const,
+    kind: proposal.kind,
+    bookingId: outcome.bookingId,
+    code: outcome.code,
+    manageToken: outcome.manageToken,
+  };
+  const failed = (step: string) => (error: unknown) =>
+    console.error("[ai-confirm] Confirmed, but a follow-up step failed", {
+      businessId,
+      proposalId,
+      step,
+      error: error instanceof Error ? error.name : "Unknown",
+    });
+  try {
+    await settleProposal({
+      businessId,
+      proposalId,
+      state: "confirmed",
+      bookingId: outcome.bookingId,
+      customer: customer ?? undefined,
+      now,
+    });
+  } catch (error) {
+    failed("settle")(error);
+  }
+  try {
+    const page = await receptionistPage(businessId);
+    const zone = proposal.customerTimezone ?? page.business.timezone;
+    const service = page.services.find((s) => s.id === proposal.serviceId)?.name ?? "Appointment";
+    const staff = page.staff.find((s) => s.id === proposal.staffId)?.name ?? "our team";
+    const when = whenLabel(proposal.startsAt, zone);
+    const message =
+      proposal.kind === "book"
+        ? `Booked: ${service} with ${staff}, ${when}. Booking code ${outcome.code}. A confirmation email is on its way.`
+        : proposal.kind === "reschedule"
+          ? `Moved: ${service} with ${staff} is now ${when}. Booking code ${outcome.code}. An email with the new time is on its way.`
+          : `Cancelled: ${service} on ${when} (booking ${outcome.code}). A cancellation email is on its way.`;
+    if (proposal.kind === "book") {
+      await setConversationOutcome({ businessId, conversationId, outcome: "booked" });
+    }
+    const booked = await confirmedCard(
+      slug,
+      proposal,
+      outcome,
+      { service, staff },
+      customer?.email ?? proposal.customerEmail,
+      zone,
+      page.business.cancellationWindowHours,
+    );
+    await record(proposal, message, { confirmed: true, card: booked });
+    return { ...done, message, card: booked };
+  } catch (error) {
+    failed("card")(error);
+    const message =
+      proposal.kind === "book"
+        ? `Booked. Booking code ${outcome.code}. A confirmation email is on its way.`
+        : proposal.kind === "reschedule"
+          ? `Moved. Booking code ${outcome.code}. An email with the new time is on its way.`
+          : `Cancelled (booking ${outcome.code}). A cancellation email is on its way.`;
+    return { ...done, message, card: null };
+  }
 }
 
 /** The outcome as an assistant turn: the chat shows it and the model reads it next time. */
