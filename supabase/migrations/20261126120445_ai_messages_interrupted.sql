@@ -1,0 +1,1 @@
+ALTER TABLE "ai_messages" ADD COLUMN "interrupted" boolean DEFAULT false NOT NULL;

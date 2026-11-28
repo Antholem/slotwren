@@ -26,6 +26,8 @@ const model = vi.hoisted(() => ({ current: null as ChatModel | null }));
 vi.mock("@/server/ai/model", () => ({ getChatModel: () => model.current }));
 
 const ZONE = "America/Los_Angeles";
+// Big enough that a message's reserved estimate (a few thousand tokens) fits below 80%.
+const BUDGET = 1_000_000;
 let ip = 0;
 const nextIp = () => `198.18.20.${(ip++ % 250) + 1}`;
 
@@ -121,7 +123,7 @@ describe("AI receptionist guardrails", () => {
         aiEnabled: true,
         plan: "pro",
         timezone: ZONE,
-        aiMonthlyTokenBudget: 1000,
+        aiMonthlyTokenBudget: BUDGET,
       })
       .where(eq(schema.businesses.id, businessId));
     await db
@@ -150,7 +152,7 @@ describe("AI receptionist guardrails", () => {
 
   describe("monthly token budget", () => {
     it("79%: answers, nothing recorded", async () => {
-      await useTokens(790);
+      await useTokens(BUDGET * 0.79);
       const turn = await say(a.business.slug, "Hello");
       expect(turn.status).toBe(200);
       expect(textOf(turn.chunks)).toBeTruthy();
@@ -158,7 +160,7 @@ describe("AI receptionist guardrails", () => {
     });
 
     it("80%: still answers, and the owners' warning is recorded once a month", async () => {
-      await useTokens(800);
+      await useTokens(BUDGET * 0.8);
       expect((await say(a.business.slug, "Hello")).status).toBe(200);
       expect((await say(a.business.slug, "Hello again")).status).toBe(200);
       const warnings = await events("budget_warning");
@@ -167,7 +169,7 @@ describe("AI receptionist guardrails", () => {
     });
 
     it("100%: rests politely before any model call; hand-off still works", async () => {
-      await useTokens(1000);
+      await useTokens(BUDGET);
       const calls = (model.current!.model as MockLanguageModelV4).doStreamCalls;
       const turn = await say(a.business.slug, "Anything Saturday?");
       expect(turn.status).toBe(503);
@@ -192,7 +194,7 @@ describe("AI receptionist guardrails", () => {
 
     it("resets on the 1st in the business's timezone: last month's tokens don't count", async () => {
       // useTokens always adds 999,999 a minute before this month began (in LA).
-      await useTokens(10);
+      await useTokens(BUDGET * 0.01);
       expect((await say(a.business.slug, "Hello")).status).toBe(200);
       expect(await events()).toEqual([]);
     });

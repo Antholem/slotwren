@@ -52,6 +52,8 @@ test("switching the receptionist off hides the button and stops an open chat", a
 
   // A customer has the chat open in another tab.
   const customer = await context.newPage();
+  // Its own visitor IP too: the hand-off and chat limits count per IP.
+  await asNewVisitor(customer);
   await customer.goto(`/b/${fixture.business.slug}`);
   await customer.getByRole("button", { name: "Ask us anything" }).click();
   const chat = customer.getByRole("dialog");
@@ -311,6 +313,8 @@ test("a used-up budget: the chat rests politely, questions still reach the team"
   });
 
   const customer = await context.newPage();
+  // Its own visitor IP too: the hand-off and chat limits count per IP.
+  await asNewVisitor(customer);
   await customer.goto(`/b/${fixture.business.slug}`);
   await customer.getByRole("button", { name: "Ask us anything" }).click();
   const chat = customer.getByRole("dialog");

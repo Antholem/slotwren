@@ -183,6 +183,20 @@
       "when": 1795612940324,
       "tag": "20261125132220_ai_guardrail_events_access",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1795694685830,
+      "tag": "20261126120445_ai_messages_interrupted",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1795694689847,
+      "tag": "20261126120449_ai_guardrail_events_privileges",
+      "breakpoints": true
     }
   ]
 }

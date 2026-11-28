@@ -83,6 +83,38 @@ describe("RLS coverage guard", () => {
     },
   );
 
+  it.each(tables.map((t) => [t.table] as const))(
+    "%s grants anon and authenticated no TRUNCATE, TRIGGER or REFERENCES",
+    async (name) => {
+      // TRUNCATE ignores RLS; nothing in the app needs the other two.
+      const granted = await db.execute<{ grantee: string; privilege: string }>(sql`
+        select grantee, privilege_type as privilege
+        from information_schema.role_table_grants
+        where table_schema = 'public' and table_name = ${name}
+          and grantee in ('anon', 'authenticated')
+          and privilege_type in ('TRUNCATE', 'TRIGGER', 'REFERENCES')
+      `);
+      expect([...granted]).toEqual([]);
+    },
+  );
+
+  it("tables created by migrations from now on don't get those privileges either", async () => {
+    // pg_default_acl for the migration role (postgres): D = truncate, t = trigger, x = references.
+    const [row] = await db.execute<{ acl: string }>(sql`
+      select coalesce(array_to_string(defaclacl, ','), '') as acl
+      from pg_default_acl
+      where defaclnamespace = 'public'::regnamespace and defaclobjtype = 'r'
+        and defaclrole = 'postgres'::regrole
+    `);
+    const entries = (row?.acl ?? "").split(",").filter(Boolean);
+    for (const role of ["anon", "authenticated"]) {
+      const entry = entries.find((e) => e.startsWith(`${role}=`));
+      if (!entry) continue;
+      const privileges = entry.slice(role.length + 1).split("/")[0]!;
+      expect(privileges, role).not.toMatch(/[Dtx]/);
+    }
+  });
+
   it("server-only tables can't be read by anon or authenticated at all", async () => {
     for (const name of Object.keys(SERVER_ONLY_TABLES)) {
       const [row] = await db.execute<{ anon: boolean; authenticated: boolean }>(sql`

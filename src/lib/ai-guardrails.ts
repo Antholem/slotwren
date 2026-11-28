@@ -22,6 +22,21 @@ export const CAPPED_MESSAGE =
 export const UNAVAILABLE_MESSAGE =
   "The assistant isn't available right now. You can still book on this page.";
 
+/**
+ * What the prompt holds of the business's own writing, in characters: every
+ * message (and every tool step) resends it, so it's bounded whatever the
+ * owner writes. FAQs in their order until the total is reached; each service
+ * description up to its cap. The FAQ editor shows owners how much is used.
+ */
+export const PROMPT_LIMITS = { faqChars: 8_000, serviceDescriptionChars: 300 } as const;
+
+/** Tokens one conversation may use in all (every turn resends the prompt). */
+export const CONVERSATION_TOKEN_LIMIT = 80_000;
+
+/** Shown when a conversation has used its tokens: a new chat starts fresh. */
+export const CONVERSATION_LIMIT_MESSAGE =
+  "This chat has reached its limit. Start a new chat to keep going.";
+
 export type BudgetState = "ok" | "warning" | "exhausted";
 
 export function budgetState(used: number, budget: number): BudgetState {

@@ -15,6 +15,8 @@ import { connectTestDb, createFixtureBusiness } from "../support/db";
 
 vi.hoisted(() => {
   process.env.AI_DAILY_MODEL_CALL_CAP = "4";
+  // The whole cap for any business here (the share: ai-business-share.test.ts).
+  process.env.AI_BUSINESS_CALL_SHARE = "1";
 });
 const model = vi.hoisted(() => ({ current: null as ChatModel | null }));
 vi.mock("@/server/ai/model", () => ({ getChatModel: () => model.current }));
@@ -90,7 +92,8 @@ describe("the shared daily AI cap", () => {
     model.current = { model: mock, provider: "mock", modelId: "mock", timeoutMs: 5_000 };
 
     // 1 call: a plain answer.
-    expect(await say(a.business.slug, "Hello")).toMatchObject({ status: 200, tools: 0 });
+    const hello = await say(a.business.slug, "Hello");
+    expect(hello).toMatchObject({ status: 200, tools: 0 });
     // 2 calls: a tool, then the answer (3 of 4 used).
     expect(await say(b.business.slug, "Book a haircut")).toMatchObject({ status: 200, tools: 1 });
     expect(mock.doStreamCalls).toHaveLength(3);

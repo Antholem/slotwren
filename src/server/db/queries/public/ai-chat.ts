@@ -1,7 +1,7 @@
 import "server-only";
 
 import type { ModelMessage } from "ai";
-import { and, asc, count, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 
 import { env } from "@/env";
 import type { AiBusinessContext } from "@/server/ai/prompt";
@@ -107,12 +107,25 @@ export const getAiContext = adminQuery(
   },
 );
 
-/** A conversation of this business with its customer-turn count, or null. */
+export type FoundConversation = {
+  id: string;
+  /** Customer messages so far. */
+  userTurns: number;
+  /** Tokens the conversation has used (every row's input + output). */
+  tokens: number;
+  /**
+   * The last customer message, when nothing but interrupted replies (or
+   * nothing at all) came after it: sending it again is a retry.
+   */
+  retryText: string | null;
+};
+
+/** A conversation of this business with its turn count, tokens and retry state, or null. */
 export const findConversation = adminQuery(
   async (
     db,
     { businessId, conversationId }: TenantScoped & { conversationId: string },
-  ): Promise<{ id: string; userTurns: number } | null> => {
+  ): Promise<FoundConversation | null> => {
     const [row] = await db
       .select({ id: aiConversations.id })
       .from(aiConversations)
@@ -120,19 +133,43 @@ export const findConversation = adminQuery(
         and(eq(aiConversations.id, conversationId), eq(aiConversations.businessId, businessId)),
       );
     if (!row) return null;
-    const [turns] = await db
-      .select({ n: count() })
-      .from(aiMessages)
-      .where(
-        and(
-          eq(aiMessages.businessId, businessId),
-          eq(aiMessages.conversationId, row.id),
-          eq(aiMessages.role, "user"),
-        ),
-      );
-    return { id: row.id, userTurns: turns?.n ?? 0 };
+    const scope = and(eq(aiMessages.businessId, businessId), eq(aiMessages.conversationId, row.id));
+    const [[totals], tail] = await Promise.all([
+      db
+        .select({
+          userTurns: sql<number>`(count(*) filter (where ${aiMessages.role} = 'user'))::int`,
+          tokens: sql<number>`coalesce(sum(coalesce(${aiMessages.inputTokens}, 0) + coalesce(${aiMessages.outputTokens}, 0)), 0)::int`,
+        })
+        .from(aiMessages)
+        .where(scope),
+      // The newest rows down to the last customer message (a retry follows only interrupted ones).
+      db
+        .select({
+          role: aiMessages.role,
+          content: aiMessages.content,
+          interrupted: aiMessages.interrupted,
+        })
+        .from(aiMessages)
+        .where(and(scope, inArray(aiMessages.role, ["user", "assistant"])))
+        .orderBy(desc(aiMessages.createdAt), desc(aiMessages.id))
+        .limit(MAX_RETRY_TAIL),
+    ]);
+    const lastUser = tail.findIndex((m) => m.role === "user");
+    const retryText =
+      lastUser >= 0 && tail.slice(0, lastUser).every((m) => m.interrupted)
+        ? tail[lastUser]!.content
+        : null;
+    return {
+      id: row.id,
+      userTurns: totals?.userTurns ?? 0,
+      tokens: totals?.tokens ?? 0,
+      retryText,
+    };
   },
 );
+
+/** Interrupted replies a retry may follow (each Retry adds at most one). */
+const MAX_RETRY_TAIL = 6;
 
 export const startConversation = adminQuery(
   async (
@@ -216,15 +253,19 @@ export const saveMessage = adminQuery(
       parts,
       inputTokens,
       outputTokens,
+      interrupted = false,
     }: TenantScoped & {
       conversationId: string;
-      role: "user" | "assistant";
+      /** `system`: a usage-only row (a reply that produced nothing), never shown or replayed. */
+      role: "user" | "assistant" | "system";
       /** Plain text, for previews and search. */
       content: string;
       /** Default: one text part. Assistant turns: the model's response messages. */
       parts?: unknown[];
       inputTokens?: number;
       outputTokens?: number;
+      /** A reply cut short: the steps it got through (see FoundConversation.retryText). */
+      interrupted?: boolean;
     },
   ): Promise<void> => {
     await db.transaction(async (tx) => {
@@ -233,9 +274,10 @@ export const saveMessage = adminQuery(
         conversationId,
         role,
         content,
-        parts: parts ?? [{ type: "text", text: content }],
+        parts: parts ?? (content ? [{ type: "text", text: content }] : []),
         inputTokens,
         outputTokens,
+        interrupted,
       });
       await tx
         .update(aiConversations)

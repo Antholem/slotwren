@@ -12,6 +12,7 @@ import {
 import { openQuestionsFor, recordGuardrailEvent } from "@/server/db/queries/public/ai-guardrails";
 import { getPublicBusinessBySlug } from "@/server/db/queries/public/business";
 import { clientIp, limitAll, rateLimit } from "@/server/rate-limit";
+import { refuseCrossSite } from "@/server/same-site";
 
 /*
  * POST /api/chat/<slug>/handoff  { conversationId?, name, email, message, website? }
@@ -48,6 +49,14 @@ const respond = (result: HandoffResponse, status = result.ok ? 200 : 400, header
   Response.json(result, { status, headers: { ...NO_STORE, ...headers } });
 
 export async function POST(request: Request, { params }: RouteContext<"/api/chat/[slug]/handoff">) {
+  // Only from the app's own pages (the widget's iframe is one).
+  const crossSite = refuseCrossSite(request);
+  if (crossSite) {
+    return respond(
+      { ok: false, error: "bad_request", message: crossSite.message },
+      crossSite.status,
+    );
+  }
   const { slug } = await params;
   const business = SLUG_PATTERN.test(slug) ? await getPublicBusinessBySlug(slug) : null;
   if (!business) return respond({ ok: false, error: "not_found", message: "Not found" }, 404);

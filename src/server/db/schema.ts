@@ -502,6 +502,9 @@ export const aiMessages = pgTable(
     parts: jsonb("parts").$type<unknown[]>().notNull().default([]), // AI SDK message parts incl. tool calls + results
     inputTokens: integer("input_tokens"),
     outputTokens: integer("output_tokens"),
+    // A reply cut short (provider error, timeout): the steps it got through. Retrying
+    // the same message carries on after it instead of saving the message twice.
+    interrupted: boolean("interrupted").notNull().default(false),
     createdAt: createdAt(),
   },
   (t) => [

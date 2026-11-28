@@ -13,7 +13,11 @@ import { env } from "@/env";
  *
  * If the store itself fails we let the request through and log it: a
  * customer who can't book because Redis blinked is worse than a few extra
- * requests.
+ * requests. Except the AI limits (`ai:*`): those guard paid model calls, so a
+ * failed check refuses (fails closed).
+ *
+ * Also a shared counter (`adjustCounter`) for the AI token reservations
+ * (src/server/ai/guardrails.ts), in the same store.
  */
 
 export const LIMITS = {
@@ -28,9 +32,18 @@ export const LIMITS = {
   // few seconds at most; the per-business cap bounds spend if many IPs pile on.
   "chat:ip": { limit: 20, windowSec: 60 },
   "chat:business": { limit: 300, windowSec: 60 },
+  // A person has one or two chats a day; these stop one IP from spending the
+  // shared cap, however it splits its messages into conversations.
+  "chat:ip:day": { limit: 40, windowSec: 86_400 },
+  "chat:conversations:ip": { limit: 15, windowSec: 86_400 },
   // Every business shares the AI provider's key and its daily quota (env): one
-  // count per model call, not per message.
+  // count per model call, not per message. One business may use its share of it
+  // (AI_BUSINESS_CALL_SHARE, a quarter by default).
   "ai:calls": { limit: env.AI_DAILY_MODEL_CALL_CAP, windowSec: 86_400 },
+  "ai:calls:business": {
+    limit: Math.max(1, Math.ceil(env.AI_DAILY_MODEL_CALL_CAP * env.AI_BUSINESS_CALL_SHARE)),
+    windowSec: 86_400,
+  },
   // "Message the team": a person might send one or two; more is spam.
   "handoff:ip": { limit: 3, windowSec: 3_600 },
   "handoff:email": { limit: 3, windowSec: 86_400 },
@@ -41,12 +54,24 @@ export type Action = "slots" | "book" | "chat";
 
 export type Limiter = {
   check(name: LimitName, key: string, now: number): Promise<{ success: boolean; resetAt: number }>;
+  /** Add `delta` to a counter (expiring `ttlSec` after its last change); the new total. */
+  adjust(key: string, delta: number, ttlSec: number, now: number): Promise<number>;
 };
+
+/** Limits that guard paid AI calls refuse when the store can't be asked. */
+const failsClosed = (name: LimitName) => name.startsWith("ai:");
 
 /** A fixed-window counter in memory: local dev and tests. */
 export function memoryLimiter(): Limiter {
   const windows = new Map<string, { count: number; resetAt: number }>();
+  const counters = new Map<string, { value: number; expiresAt: number }>();
   return {
+    async adjust(key, delta, ttlSec, now) {
+      const current = counters.get(key);
+      const value = (current && current.expiresAt > now ? current.value : 0) + delta;
+      counters.set(key, { value, expiresAt: now + ttlSec * 1000 });
+      return value;
+    },
     async check(name, key, now) {
       const { limit, windowSec } = LIMITS[name];
       const id = `${name}:${key}`;
@@ -65,6 +90,15 @@ export function memoryLimiter(): Limiter {
 function upstashLimiter(redis: Redis): Limiter {
   const limiters = new Map<LimitName, Ratelimit>();
   return {
+    async adjust(key, delta, ttlSec) {
+      const id = `slotwren:counter:${key}`;
+      const [value] = await redis
+        .multi()
+        .incrby(id, delta)
+        .expire(id, ttlSec)
+        .exec<[number, number]>();
+      return value;
+    },
     async check(name, key) {
       let limiter = limiters.get(name);
       if (!limiter) {
@@ -83,6 +117,11 @@ function upstashLimiter(redis: Redis): Limiter {
 }
 
 let shared: Limiter | null = null;
+
+/** Whether limits and counters are shared across server instances (Upstash). */
+export function sharedStoreConfigured(): boolean {
+  return Boolean(env.UPSTASH_REDIS_REST_URL && env.UPSTASH_REDIS_REST_TOKEN);
+}
 
 function defaultLimiter(): Limiter {
   if (shared) return shared;
@@ -107,7 +146,12 @@ export const RATE_LIMIT_MESSAGES = {
     "This business is taking a lot of bookings right now. Try again in a few minutes.",
   "chat:ip": "You're sending messages very quickly. Wait a moment, then try again.",
   "chat:business": "The assistant is very busy right now. Wait a moment, then try again.",
+  "chat:ip:day":
+    "You've sent a lot of messages today. You can still book on this page, or chat again tomorrow.",
+  "chat:conversations:ip":
+    "You've started a lot of chats today. You can still book on this page, or chat again tomorrow.",
   "ai:calls": "The assistant isn't available right now. You can still book on this page.",
+  "ai:calls:business": "The assistant isn't available right now. You can still book on this page.",
   "handoff:ip": "You've sent a few questions already. Try again in an hour.",
   "handoff:email":
     "You've sent a few questions today. The team will reply by email; try again tomorrow.",
@@ -116,8 +160,8 @@ export const RATE_LIMIT_MESSAGES = {
 export type RateLimitResult =
   { ok: true } | { ok: false; limit: LimitName; retryAfterSec: number; message: string };
 
-/** Every check in order; the first one over its limit refuses. */
-function createLimitAll(getLimiter: () => Limiter) {
+/** Every check in order; the first one over its limit refuses. Tests pass their own limiter. */
+export function createLimitAll(getLimiter: () => Limiter) {
   return async function limitAll(
     checks: [LimitName, string][],
     now = Date.now(),
@@ -127,8 +171,15 @@ function createLimitAll(getLimiter: () => Limiter) {
       try {
         result = await getLimiter().check(name, key, now);
       } catch (error) {
-        console.error("[rate-limit] Check failed; letting the request through", { name, error });
-        continue;
+        const closed = failsClosed(name);
+        console.error(
+          closed
+            ? "[rate-limit] Check failed; refusing (AI limit)"
+            : "[rate-limit] Check failed; letting the request through",
+          { name, error: error instanceof Error ? error.name : "Unknown" },
+        );
+        if (!closed) continue;
+        return { ok: false, limit: name, retryAfterSec: 60, message: RATE_LIMIT_MESSAGES[name] };
       }
       if (!result.success) {
         return {
@@ -165,6 +216,14 @@ export const rateLimit = createRateLimit(defaultLimiter);
 
 /** Any limits, by name and key (the daily AI cap, hand-off spam). */
 export const limitAll = createLimitAll(defaultLimiter);
+
+/**
+ * Add to a shared counter (the AI token reservations); the new total. Throws
+ * when the store fails: callers guarding paid calls refuse then.
+ */
+export function adjustCounter(key: string, delta: number, ttlSec: number, now = Date.now()) {
+  return defaultLimiter().adjust(key, delta, ttlSec, now);
+}
 
 /**
  * The caller's IP: the first x-forwarded-for hop (set by Vercel), else
