@@ -6,6 +6,7 @@ import { and, eq } from "drizzle-orm";
 import * as schema from "@/server/db/schema";
 
 import { asNewVisitor, bookableBusinesses, type Fixture } from "../support/booking-flow";
+import { bookingValues } from "../support/db";
 import { collectConsoleErrors, expectNoAxeViolations, uniqueEmail } from "../support/e2e";
 import { liveBusinesses } from "../support/e2e-business";
 
@@ -191,7 +192,9 @@ test("hand-off: the question reaches the customer's profile", async ({ page }) =
   const open = page.getByRole("region", { name: "Question for the team" });
   await expect(open).toContainText(question);
 
-  // Today says it too, and that nobody verified the address.
+  // Today says it too, and that nobody verified the address. (Its AI card sits
+  // beside today's appointments: give the day one.)
+  await db.insert(schema.bookings).values(bookingValues(fixture, new Date()));
   await page.goto("/app");
   const today = page.getByRole("region", { name: "AI receptionist today" });
   await expect(today).toContainText(question);

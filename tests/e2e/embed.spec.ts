@@ -144,6 +144,8 @@ test("Escape closes the widget and returns focus to its button", async ({ page }
   const frame = page.frameLocator(`iframe[title^="Book with"]`);
   await expect(frame.getByRole("heading", { name: "Choose a service" })).toBeVisible();
 
+  // The bridge is listening once it has marked the page embedded (after hydration).
+  await expect(frame.locator('html[data-embed="1"]')).toHaveCount(1);
   // From inside the booking page (focus is in the iframe).
   await frame.getByRole("radio", { name: /Haircut/ }).focus();
   await page.keyboard.press("Escape");
