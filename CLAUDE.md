@@ -42,7 +42,7 @@ pnpm check               # lint + typecheck + format:check + unit/component test
 pnpm lint | typecheck | format | test
 pnpm test:integration    # against local Supabase (pnpm db:start first)
 pnpm test:e2e            # Playwright, desktop + mobile, with axe
-pnpm ai:eval             # the 15 scripted AI conversations against the REAL model (manual only)
+pnpm ai:eval             # the 19 scripted AI conversations against the REAL model (manual only)
 
 pnpm db:generate --name <what>    # migration from schema.ts changes
 pnpm db:migration --name <what>   # empty custom SQL migration (RLS, constraints, triggers)

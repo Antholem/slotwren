@@ -87,7 +87,7 @@ pnpm ai:ask "Anything Saturday morning?" <conversationId>   # continue the same 
 
 It prints the reply, the conversation id and any tool calls.
 
-`pnpm test:integration` includes 15 scripted conversations (`tests/ai/`) with a mock model.
+`pnpm test:integration` includes 19 scripted conversations (`tests/ai/`) with a mock model.
 `pnpm ai:eval` runs the same scripts against the real model `AI_PROVIDER` / `AI_MODEL` pick and
 prints pass/fail per script: run it before switching providers (local Supabase needed; never in
 CI, but there's a manual **AI eval** GitHub workflow that uses the repo's key secret). `AI_ASK_URL` (default
