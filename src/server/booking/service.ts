@@ -188,9 +188,17 @@ function invalid(error: z.ZodError): Result<never, BookingError> {
  * Two transactions inserting overlapping bookings at the same moment can each
  * wait on the other's uncommitted row in the exclusion index, and Postgres
  * aborts one with a deadlock (40P01) instead of 23P01. Run it again: the retry
- * sees the winner's committed booking and is refused as "just taken".
+ * sees the winner's committed booking and is refused as "just taken". After a
+ * short random wait, growing with each attempt, so two losers don't collide again.
  */
 const isDeadlock = (error: unknown) => pgError(error).code === "40P01";
+
+/** 10–40 ms on the first retry, 20–80 on the second, … */
+export const deadlockBackoffMs = (attempt: number, random = Math.random) =>
+  Math.round(attempt * (10 + random() * 30));
+
+const waitBeforeRetry = (attempt: number) =>
+  new Promise((resolve) => setTimeout(resolve, deadlockBackoffMs(attempt)));
 
 /** Expected database refusals as values; anything else is a bug and throws. */
 function settleError(error: unknown): Result<never, BookingError> {
@@ -346,6 +354,7 @@ export async function createBooking(
         attempt < 4 &&
         (isUniqueViolation(error, "bookings_business_code") || isDeadlock(error))
       ) {
+        if (isDeadlock(error)) await waitBeforeRetry(attempt);
         continue;
       }
       return settleError(error);
@@ -359,7 +368,10 @@ async function retryDeadlock<T>(run: () => Promise<T>): Promise<T> {
     try {
       return await run();
     } catch (error) {
-      if (attempt < 3 && isDeadlock(error)) continue;
+      if (attempt < 3 && isDeadlock(error)) {
+        await waitBeforeRetry(attempt);
+        continue;
+      }
       throw error;
     }
   }
