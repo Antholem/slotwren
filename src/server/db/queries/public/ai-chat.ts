@@ -293,7 +293,9 @@ export const saveMessage = adminQuery(
  * "Message the team": an open question the owner sees on the customer's
  * profile (step 3.6). The customer is found by email in this business, or
  * created with what they typed; an existing customer's record is never
- * changed from here (as on the booking page). Marks the chat handed off.
+ * changed from here (as on the booking page), and the chat is linked only to a
+ * customer it created: the email is unverified, so a stranger typing someone's
+ * address doesn't make the chat theirs. Marks the chat handed off.
  */
 export const saveHandoff = adminQuery(
   async (
@@ -316,16 +318,16 @@ export const saveHandoff = adminQuery(
             sql`lower(${customers.email}) = lower(${email})`,
           ),
         );
-      const customerId =
-        existing?.id ??
-        (
-          await tx
-            .insert(customers)
-            .values({ businessId, name, email })
-            .onConflictDoNothing()
-            .returning({ id: customers.id })
-        )[0]?.id ??
-        null;
+      const created = existing
+        ? null
+        : ((
+            await tx
+              .insert(customers)
+              .values({ businessId, name, email })
+              .onConflictDoNothing()
+              .returning({ id: customers.id })
+          )[0]?.id ?? null);
+      const customerId = existing?.id ?? created;
       await tx.insert(handoffRequests).values({
         businessId,
         conversationId,
@@ -340,7 +342,8 @@ export const saveHandoff = adminQuery(
           outcome: "handed_off",
           visitorName: name,
           visitorEmail: email,
-          ...(customerId ? { customerId } : {}),
+          // Only a customer this hand-off created: never an existing one, by an unverified email.
+          ...(created ? { customerId: created } : {}),
         })
         .where(
           and(eq(aiConversations.id, conversationId), eq(aiConversations.businessId, businessId)),

@@ -44,9 +44,16 @@ export const LIMITS = {
     limit: Math.max(1, Math.ceil(env.AI_DAILY_MODEL_CALL_CAP * env.AI_BUSINESS_CALL_SHARE)),
     windowSec: 86_400,
   },
-  // "Message the team": a person might send one or two; more is spam.
+  // "Message the team": a person might send one or two; more is spam. Its own
+  // bucket per business, so hand-off spam can't use up the booking limits.
+  "handoff:business": { limit: 30, windowSec: 600 },
   "handoff:ip": { limit: 3, windowSec: 3_600 },
+  // Keyed by email *and* IP: someone else typing a customer's address can't
+  // use up that customer's questions.
   "handoff:email": { limit: 3, windowSec: 86_400 },
+  "handoff:conversation": { limit: 3, windowSec: 86_400 },
+  // The owners' email about a question: a few an hour; the rest wait on the dashboard.
+  "handoff:owner-email": { limit: 5, windowSec: 3_600 },
 } as const satisfies Record<string, { limit: number; windowSec: number }>;
 
 export type LimitName = keyof typeof LIMITS;
@@ -152,9 +159,14 @@ export const RATE_LIMIT_MESSAGES = {
     "You've started a lot of chats today. You can still book on this page, or chat again tomorrow.",
   "ai:calls": "The assistant isn't available right now. You can still book on this page.",
   "ai:calls:business": "The assistant isn't available right now. You can still book on this page.",
+  "handoff:business":
+    "The team is getting a lot of questions right now. Try again in a few minutes.",
   "handoff:ip": "You've sent a few questions already. Try again in an hour.",
   "handoff:email":
     "You've sent a few questions today. The team will reply by email; try again tomorrow.",
+  "handoff:conversation":
+    "You've sent a few questions from this chat. The team will reply by email.",
+  "handoff:owner-email": "The team has been told about a few questions already.",
 } as const satisfies Record<LimitName, string>;
 
 export type RateLimitResult =

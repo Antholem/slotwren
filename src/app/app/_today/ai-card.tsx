@@ -37,6 +37,10 @@ export function AiCard({ ai, zone }: { ai: TodayAi; zone: string }) {
               {formatInZone(question.createdAt, zone, "HH:mm")}
             </span>
           </p>
+          {/* Foreground, not muted: muted text is under AA on the warning tint. */}
+          <p className="text-body-sm text-foreground">
+            {question.email} · From the AI chat · email not verified
+          </p>
           <a
             href={`mailto:${question.email}`}
             className="inline-flex min-h-11 w-fit items-center text-label underline underline-offset-4 focus-visible:rounded focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"

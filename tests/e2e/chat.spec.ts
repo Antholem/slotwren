@@ -190,6 +190,12 @@ test("hand-off: the question reaches the customer's profile", async ({ page }) =
   await page.goto(`/app/customers/${fixture.customer.id}`);
   const open = page.getByRole("region", { name: "Question for the team" });
   await expect(open).toContainText(question);
+
+  // Today says it too, and that nobody verified the address.
+  await page.goto("/app");
+  const today = page.getByRole("region", { name: "AI receptionist today" });
+  await expect(today).toContainText(question);
+  await expect(today).toContainText("email not verified");
   expect(errors).toEqual([]);
 });
 
