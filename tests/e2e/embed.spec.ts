@@ -159,6 +159,35 @@ test("Escape closes the widget and returns focus to its button", async ({ page }
   await expect(button).toBeFocused();
 });
 
+test("with the chat open, one Escape closes the widget; the site behind is inert meanwhile", async ({
+  page,
+}) => {
+  const { fixture } = await businesses.signInWithBusiness(page, "owner", "widget-chat-esc");
+  await bookable(fixture);
+  await db
+    .update(schema.businesses)
+    .set({ aiEnabled: true, plan: "pro" })
+    .where(eq(schema.businesses.id, fixture.business.id));
+  await page.goto(`${HOST}/?business=${fixture.business.slug}`);
+  const bubble = page.getByRole("button", { name: `Chat with ${fixture.business.name}` });
+  await bubble.focus();
+  await page.keyboard.press("Enter");
+  const chatPanel = page.getByRole("dialog", { name: /^Chat with/ });
+  await expect(chatPanel).toBeVisible();
+  const frame = page.frameLocator(`iframe[title^="Chat with"]`);
+  const input = frame.getByRole("textbox", { name: "Ask a question or book" });
+  await expect(input).toBeFocused();
+
+  // The website behind can't be reached while the widget is open.
+  const inert = () => page.evaluate(() => document.querySelector("main")?.inert ?? null);
+  expect(await inert()).toBe(true);
+
+  await page.keyboard.press("Escape");
+  await expect(chatPanel).toBeHidden();
+  await expect(bubble).toBeFocused();
+  expect(await inert()).toBe(false);
+});
+
 test("inline mode renders the booking page inside the site", async ({ page }) => {
   const { fixture } = await businesses.signInWithBusiness(page, "owner", "widget-inline");
   await bookable(fixture);

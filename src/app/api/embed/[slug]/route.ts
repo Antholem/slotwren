@@ -10,7 +10,8 @@ import { getPublicBusinessBySlug } from "@/server/db/queries/public/business";
  * fields only; any site may fetch it (CORS *), except that a business with an
  * "Allowed websites" list answers 403 to every other site, so the widget
  * doesn't show there (the booking page refuses to be framed there too).
- * Cached briefly, so option changes reach sites within minutes.
+ * Cached briefly, so option changes reach sites within minutes: in shared
+ * caches only when there's no allowed list (the answer then varies by Origin).
  */
 
 const SLOTWREN_TEAL = { background: "#0F766E", foreground: "#FFFFFF", hover: "#115E59" };
@@ -49,9 +50,13 @@ export async function GET(request: Request, { params }: RouteContext<"/api/embed
         }
       : SLOTWREN_TEAL,
   };
-  return Response.json(config, {
-    headers: headers({ "Cache-Control": "public, max-age=60, s-maxage=60" }),
-  });
+  // The same answer for every site: a shared cache may keep it. With an
+  // allowed list the answer depends on the Origin, so only the browser does
+  // (a CDN that ignored Vary could hand one site's answer to another).
+  const cache = embed.embed.allowedOrigins.length
+    ? "private, max-age=60"
+    : "public, max-age=60, s-maxage=60";
+  return Response.json(config, { headers: headers({ "Cache-Control": cache }) });
 }
 
 export function OPTIONS() {

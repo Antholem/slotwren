@@ -52,14 +52,14 @@ button{cursor:pointer;border:0;font:600 16px/1.2 system-ui,-apple-system,"Segoe 
 .book{display:inline-flex;align-items:center;gap:8px;min-height:48px;padding:0 20px;border-radius:999px;background:${c.colors.background};color:${c.colors.foreground};box-shadow:0 8px 24px rgba(0,0,0,.18)}
 .book:hover{background:${c.colors.hover}}
 .bubble{display:inline-flex;align-items:center;justify-content:center;width:56px;height:56px;border-radius:999px;background:#fff;color:${c.colors.background};box-shadow:0 8px 24px rgba(0,0,0,.18)}
-button:focus-visible{outline:3px solid ${c.colors.background};outline-offset:3px}
-.book:focus-visible{outline-color:#1c1917}
+/* Two colours, so focus shows on any website: white inside, near-black outside. */
+button:focus-visible{outline:3px solid #fff;outline-offset:0;box-shadow:0 0 0 6px #1c1917}
 .overlay{position:fixed;inset:0;z-index:2147483001;background:rgba(28,25,23,.45)}
 .panel{position:fixed;z-index:2147483002;inset:0;display:flex;flex-direction:column;background:#fff;box-shadow:-8px 0 32px rgba(0,0,0,.2)}
 @media (min-width:640px){.panel{left:auto;width:min(460px,100vw)}}
 .bar{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 8px 8px 16px;border-bottom:1px solid #e7e5e4;color:#1c1917;font:600 16px/1.3 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
 .close{display:inline-flex;align-items:center;justify-content:center;width:44px;height:44px;border-radius:10px;background:transparent;color:#1c1917}
-.close:hover{background:#f5f5f4}.close:focus-visible{outline-color:#1c1917}
+.close:hover{background:#f5f5f4}
 iframe{display:block;width:100%;border:0;color-scheme:normal}
 .panel iframe{flex:1}
 @media (prefers-reduced-motion:no-preference){.panel{animation:in .18s ease-out}@keyframes in{from{transform:translateX(24px);opacity:0}to{transform:none;opacity:1}}}
@@ -194,6 +194,8 @@ iframe{display:block;width:100%;border:0;color-scheme:normal}
       });
       panel.append(bar, frame);
       root.append(overlay, panel);
+      // The page behind is out of reach (keyboard, pointer, screen readers) while the panel is open.
+      const quieted = hidePage(host);
 
       const stopListening = listen(origin, frame, script, {
         resize: () => {},
@@ -224,6 +226,7 @@ iframe{display:block;width:100%;border:0;color-scheme:normal}
         document.removeEventListener("focusin", onFocus);
         overlay.remove();
         panel.remove();
+        for (const node of quieted) node.inert = false;
         open = null;
         opener.focus();
       }
@@ -233,6 +236,17 @@ iframe{display:block;width:100%;border:0;color-scheme:normal}
 
     book.addEventListener("click", () => show(openChat, book));
     bubble?.addEventListener("click", () => show(true, bubble!));
+  }
+
+  /** Make everything on the page but the widget inert; the elements changed, to undo it. */
+  function hidePage(keep: HTMLElement): HTMLElement[] {
+    const changed: HTMLElement[] = [];
+    for (const node of Array.from(document.body.children)) {
+      if (node === keep || !(node instanceof HTMLElement) || node.inert) continue;
+      node.inert = true;
+      changed.push(node);
+    }
+    return changed;
   }
 
   /** Messages from our iframe only (origin and window), with known types only. */

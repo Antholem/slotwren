@@ -185,7 +185,8 @@ export function ChatPanel({
   const { messages, setMessages, sendMessage, regenerate, status, error } = useChat<ChatMessage>({
     transport,
     onFinish: ({ message }) => {
-      const said = textOf(message);
+      // Read out what the chat shows: the cleaned reply, never a link it removed.
+      const said = sanitizeReply(textOf(message), { origin: window.location.origin, slug });
       const proposal = message.parts.some(
         (p) => isTool(p) && (p as ToolPart).output?.status === "proposed",
       );
@@ -284,7 +285,7 @@ export function ChatPanel({
   }
 
   /** "Just taken": fresh times as chips under the card. */
-  function failed(failure: ConfirmFailure, proposalId: string) {
+  function failed(failure: ConfirmFailure, proposalId: string, kind: ProposalCard["kind"]) {
     setAnnouncement(failure.message);
     if (failure.error !== "slot_taken") return;
     setMessages((current) => [
@@ -298,7 +299,8 @@ export function ChatPanel({
             type: "data-confirmation",
             data: {
               proposalId,
-              kind: "book",
+              // What was being confirmed: a booking, or moving one (cancels are never "taken").
+              kind,
               confirmed: false,
               error: failure.error,
               alternatives: failure.alternatives ?? [],
@@ -419,7 +421,7 @@ export function ChatPanel({
                 : null
             }
             onConfirmed={(result) => confirmed(result, card.proposalId)}
-            onFailed={(failure) => failed(failure, card.proposalId)}
+            onFailed={(failure) => failed(failure, card.proposalId, card.kind)}
             onChange={() => send("I'd like a different time, please.")}
           />
         );
@@ -473,6 +475,8 @@ export function ChatPanel({
         )}
         <DialogPrimitive.Content
           aria-describedby={`${id}-note`}
+          // The website widget closes on one Escape even with the chat open (embed-bridge.tsx).
+          data-chat-panel=""
           // Desktop: a panel beside the page, not a modal; clicks outside leave it open.
           onInteractOutside={desktop ? (event) => event.preventDefault() : undefined}
           onOpenAutoFocus={(event) => {
