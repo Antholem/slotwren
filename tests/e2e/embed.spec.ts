@@ -190,6 +190,59 @@ test("with the chat open, one Escape closes the widget; the site behind is inert
   expect(await inert()).toBe(false);
 });
 
+test("the widget ignores messages from the wrong origin or another window", async ({
+  page,
+  baseURL,
+}) => {
+  const { fixture } = await businesses.signInWithBusiness(page, "owner", "widget-msgs");
+  await bookable(fixture);
+  await page.goto(`${HOST}/?business=${fixture.business.slug}`);
+  await page.evaluate(() => {
+    (window as unknown as { booked: number }).booked = 0;
+    document.addEventListener("slotwren:booked", () => {
+      (window as unknown as { booked: number }).booked++;
+    });
+  });
+  await widgetButton(page).click();
+  await expect(panel(page)).toBeVisible();
+  const frame = page.frameLocator(`iframe[title^="Book with"]`);
+  await expect(frame.locator('html[data-embed="1"]')).toHaveCount(1);
+
+  // The host page itself (wrong origin) says "close" and "booked".
+  await page.evaluate(() => {
+    window.postMessage({ type: "slotwren:close" }, "*");
+    window.postMessage({ type: "slotwren:booked" }, "*");
+  });
+
+  // Another frame on the app's own origin (right origin, wrong window) says the same.
+  const app = new URL(baseURL!).origin;
+  await page.evaluate(
+    ({ src }) => {
+      const intruder = document.createElement("iframe");
+      intruder.name = "intruder";
+      intruder.src = src;
+      document.body.append(intruder);
+    },
+    { src: `${app}/b/${fixture.business.slug}?embed=1&host=${encodeURIComponent(HOST)}` },
+  );
+  const intruder = page.frame({ name: "intruder" });
+  await expect.poll(() => page.frame({ name: "intruder" })?.url() ?? "").toContain("embed=1");
+  await (intruder ?? page.frame({ name: "intruder" })!).evaluate(() => {
+    window.parent.postMessage({ type: "slotwren:close" }, "*");
+    window.parent.postMessage({ type: "slotwren:booked" }, "*");
+  });
+
+  // None of it reached the widget.
+  await page.waitForTimeout(500);
+  await expect(panel(page)).toBeVisible();
+  expect(await page.evaluate(() => (window as unknown as { booked: number }).booked)).toBe(0);
+
+  // The widget's own iframe still closes it.
+  await frame.getByRole("radio", { name: /Haircut/ }).focus();
+  await page.keyboard.press("Escape");
+  await expect(panel(page)).toBeHidden();
+});
+
 test("inline mode renders the booking page inside the site", async ({ page }) => {
   const { fixture } = await businesses.signInWithBusiness(page, "owner", "widget-inline");
   await bookable(fixture);
