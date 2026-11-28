@@ -236,7 +236,7 @@ timezone? }`, as JSON from the same origin (`server/same-site.ts`, on every chat
   Upstash (`vitest.config.mts`). Replies pass through
   `sanitizeReply()` (plain text, only the business's own links) wherever they're shown.
   Hand-offs: their own bucket per business (`handoff:business`, never the booking limits),
-  honeypot `website`, 3/hour per IP, 3/day per email *from one IP*, 3/day and 3 open per chat
+  honeypot `website`, 3/hour per IP, 3/day per email _from one IP_, 3/day and 3 open per chat
   (never counted by email alone, which anyone can type). What
   happened is in `ai_guardrail_events` (server writes, members read; once-per-`period` kinds
   use a unique index).
