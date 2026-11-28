@@ -388,9 +388,12 @@ describe("POST /api/chat/[slug]", () => {
 
   it("429s with a message and Retry-After once an IP is over the limit", async () => {
     const ip = "203.0.113.77";
+    // One chat: a new chat per message would trip the chats-per-day limit first.
+    let conversationId: string | undefined;
     for (let i = 0; i < LIMITS["chat:ip"].limit; i++) {
-      const response = await post(a.business.slug, { text: `Question ${i}` }, ip);
+      const response = await post(a.business.slug, { text: `Question ${i}`, conversationId }, ip);
       expect(response.status).toBe(200);
+      conversationId = response.headers.get("x-conversation-id") ?? undefined;
       await response.text();
     }
     const limited = await post(a.business.slug, { text: "One too many" }, ip);

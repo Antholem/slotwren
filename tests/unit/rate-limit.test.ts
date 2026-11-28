@@ -2,12 +2,14 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 const env = vi.hoisted(() => ({
   NODE_ENV: "test",
+  AI_DAILY_MODEL_CALL_CAP: 450,
+  AI_BUSINESS_CALL_SHARE: 0.25,
   UPSTASH_REDIS_REST_URL: undefined as string | undefined,
   UPSTASH_REDIS_REST_TOKEN: undefined as string | undefined,
 }));
 vi.mock("@/env", () => ({ env }));
 
-const { LIMITS, RATE_LIMIT_MESSAGES, clientIp, createRateLimit, memoryLimiter } =
+const { LIMITS, RATE_LIMIT_MESSAGES, clientIp, createLimitAll, createRateLimit, memoryLimiter } =
   await import("@/server/rate-limit");
 
 /*
@@ -89,9 +91,56 @@ describe("rateLimit", () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     const rateLimit = createRateLimit(() => ({
       check: () => Promise.reject(new Error("Redis unreachable")),
+      adjust: () => Promise.reject(new Error("Redis unreachable")),
     }));
     expect(await rateLimit("book", { ip: "1.2.3.4", businessId: "biz" }, T0)).toEqual({ ok: true });
     vi.restoreAllMocks();
+  });
+
+  it("refuses the AI limits if the store fails: they guard paid model calls", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const limitAll = createLimitAll(() => ({
+      check: () => Promise.reject(new Error("Redis unreachable")),
+      adjust: () => Promise.reject(new Error("Redis unreachable")),
+    }));
+    expect(await limitAll([["ai:calls", "all"]], T0)).toMatchObject({
+      ok: false,
+      limit: "ai:calls",
+    });
+    expect(await limitAll([["ai:calls:business", "biz"]], T0)).toMatchObject({ ok: false });
+    // Other limits still let the request through.
+    expect(await limitAll([["chat:ip:day", "1.2.3.4"]], T0)).toEqual({ ok: true });
+    vi.restoreAllMocks();
+  });
+
+  it("one business may take a quarter of the shared daily model-call cap", async () => {
+    const limiter = memoryLimiter();
+    const limitAll = createLimitAll(() => limiter);
+    const share = LIMITS["ai:calls:business"].limit;
+    expect(share).toBe(Math.ceil(LIMITS["ai:calls"].limit / 4));
+    const call = (businessId: string) =>
+      limitAll(
+        [
+          ["ai:calls:business", businessId],
+          ["ai:calls", "all"],
+        ],
+        T0,
+      );
+    for (let i = 0; i < share; i++) expect((await call("busy")).ok).toBe(true);
+    expect(await call("busy")).toMatchObject({ ok: false, limit: "ai:calls:business" });
+    expect((await call("other")).ok).toBe(true);
+  });
+});
+
+describe("counters", () => {
+  it("add up, expire after their TTL and go negative only if asked", async () => {
+    const limiter = memoryLimiter();
+    expect(await limiter.adjust("k", 100, 60, T0)).toBe(100);
+    expect(await limiter.adjust("k", 50, 60, T0 + 1_000)).toBe(150);
+    expect(await limiter.adjust("k", -150, 60, T0 + 2_000)).toBe(0);
+    expect(await limiter.adjust("k", 10, 60, T0 + 3_000)).toBe(10);
+    // 60 s after the last change: gone.
+    expect(await limiter.adjust("k", 5, 60, T0 + 63_001)).toBe(5);
   });
 });
 

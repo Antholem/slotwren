@@ -50,6 +50,9 @@ export default defineConfig({
           // The AI receptionist's scripted conversations (mock model) run here too.
           include: ["tests/integration/**/*.test.ts", "tests/ai/conversations.test.ts"],
           environment: "node",
+          // In-memory rate limits and counters: never the real Upstash a .env.local names
+          // (its shared AI cap would be spent by, and trip, the tests).
+          env: { ...env, UPSTASH_REDIS_REST_URL: "", UPSTASH_REDIS_REST_TOKEN: "" },
           fileParallelism: false,
           testTimeout: 20_000,
           hookTimeout: 60_000,

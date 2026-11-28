@@ -53,6 +53,9 @@ const serverSchema = z
     // one busy business (or an attacker) from spending the shared key's quota. 450
     // leaves room under Gemini Flash-Lite's ~500 a day for the SDK's one retry.
     AI_DAILY_MODEL_CALL_CAP: z.coerce.number().int().min(1).max(1_000_000).default(450),
+    // The share of that cap one business may use a day (0–1], so one busy (or
+    // attacked) business can't switch the AI off for everyone.
+    AI_BUSINESS_CALL_SHARE: z.coerce.number().gt(0).max(1).default(0.25),
     GOOGLE_GENERATIVE_AI_API_KEY: z.string().min(1).optional(),
     ANTHROPIC_API_KEY: z.string().min(1).optional(),
 

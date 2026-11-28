@@ -15,7 +15,7 @@ import {
 } from "@/server/db/queries/public/ai-guardrails";
 import { getOwnerEmails } from "@/server/db/queries/system/owners";
 import { sendEmail } from "@/server/email/send";
-import { limitAll } from "@/server/rate-limit";
+import { adjustCounter, limitAll, sharedStoreConfigured } from "@/server/rate-limit";
 
 /*
  * The AI receptionist's guardrails, checked before any model call
@@ -94,19 +94,94 @@ export async function checkBudget(businessId: string, now = new Date()): Promise
 }
 
 /**
- * The shared daily cap: take one model call from it, across every business.
- * Called before the first call of a turn and again before each further step.
+ * The shared daily cap: take one model call from it, across every business,
+ * and from this business's share of it (a quarter), so one business can't
+ * spend everyone's. Called before the first call of a turn and again before
+ * each further step. Fails closed: a store error refuses.
  */
 export async function allowModelCall(businessId: string, now = Date.now()): Promise<boolean> {
-  const result = await limitAll([["ai:calls", "all"]], now);
+  const result = await limitAll(
+    [
+      ["ai:calls:business", businessId],
+      ["ai:calls", "all"],
+    ],
+    now,
+  );
   if (!result.ok) {
     await recordGuardrailEvent({
       businessId,
       kind: "global_cap",
       period: new Date(now).toISOString().slice(0, 10),
+      detail: { limit: result.limit },
     });
   }
   return result.ok;
+}
+
+/**
+ * Whether the AI may run at all here. On Vercel Production the caps and
+ * reservations must be shared across instances (Upstash); without it each
+ * instance would count on its own, so the chat stays off instead.
+ */
+export function aiStoreReady(): boolean {
+  if (env.VERCEL_ENV !== "production" || sharedStoreConfigured()) return true;
+  if (!warnedNoStore) {
+    warnedNoStore = true;
+    console.error("[ai-guardrails] Upstash isn't configured on Production; the AI chat is off.");
+  }
+  return false;
+}
+let warnedNoStore = false;
+
+// ── token reservations ────────────────────────────────────────────────
+
+/**
+ * What one model call may cost, in tokens: the prompt as sent (about four
+ * characters a token, rounded up) plus the longest reply. Reserved before
+ * the call so parallel messages can't all pass a budget that has room for one.
+ */
+export function estimateCallTokens(promptChars: number, maxOutputTokens: number): number {
+  return Math.ceil(promptChars / 4) + maxOutputTokens;
+}
+
+/** Reservations expire on their own if a request dies before releasing them. */
+const RESERVATION_TTL_SEC = 600;
+const reservationKey = (businessId: string) => `ai:reserved:${businessId}`;
+
+export type Reservation = "reserved" | "over_budget" | "unavailable";
+
+/**
+ * Reserve `tokens` of the business's monthly budget for a call. Nothing is
+ * held unless "reserved": "over_budget" when this month's use plus everything
+ * reserved would pass the budget, "unavailable" when the store can't be asked.
+ */
+export async function reserveTokens(
+  businessId: string,
+  tokens: number,
+  { used, budget }: { used: number; budget: number },
+): Promise<Reservation> {
+  try {
+    const reserved = await adjustCounter(reservationKey(businessId), tokens, RESERVATION_TTL_SEC);
+    if (used + reserved <= budget) return "reserved";
+    await adjustCounter(reservationKey(businessId), -tokens, RESERVATION_TTL_SEC);
+    return "over_budget";
+  } catch (error) {
+    console.error("[ai-guardrails] Reserving tokens failed; refusing", describe(error));
+    return "unavailable";
+  }
+}
+
+/** Hand back reserved tokens once the turn's real usage is saved. */
+export async function releaseTokens(businessId: string, tokens: number): Promise<void> {
+  if (tokens <= 0) return;
+  try {
+    const left = await adjustCounter(reservationKey(businessId), -tokens, RESERVATION_TTL_SEC);
+    // The counter expired meanwhile and restarted at 0: never leave it below.
+    if (left < 0) await adjustCounter(reservationKey(businessId), -left, RESERVATION_TTL_SEC);
+  } catch (error) {
+    // The reservation expires by itself (RESERVATION_TTL_SEC).
+    console.error("[ai-guardrails] Releasing tokens failed", describe(error));
+  }
 }
 
 const LIMITED =
