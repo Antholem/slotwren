@@ -37,7 +37,7 @@ import {
   type TranscriptOutcome,
   TRANSCRIPTS_PAGE_SIZE,
 } from "@/lib/ai-transcripts";
-import { budgetState } from "@/lib/ai-guardrails";
+import { budgetState, PROMPT_LIMITS } from "@/lib/ai-guardrails";
 import { formatInZone } from "@/lib/dates";
 import { cn } from "@/lib/utils";
 import type { AiUsage, FaqRow, GuardrailEventKind, TranscriptRow } from "@/server/db/queries/ai";
@@ -922,6 +922,7 @@ function FaqPanel({
         Answers to common questions, on top of your services, hours and policies.
         {owner ? " Changes apply to new chats right away." : " Owners can change these."}
       </p>
+      <FaqRoom faqs={faqs} />
 
       {editing === "new" && (
         <FaqForm
@@ -1000,6 +1001,28 @@ function FaqPanel({
         </ul>
       )}
     </section>
+  );
+}
+
+/** How much of the assistant's room for answers is used (it reads the first 8,000 characters). */
+function FaqRoom({ faqs }: { faqs: FaqRow[] }) {
+  if (faqs.length === 0) return null;
+  const used = faqs.reduce((n, f) => n + f.question.length + f.answer.length, 0);
+  const over = used > PROMPT_LIMITS.faqChars;
+  const n = (v: number) => v.toLocaleString("en-US");
+  return (
+    <p
+      className={cn("text-body-sm", over ? "text-warning-text" : "text-muted-foreground")}
+      aria-live="polite"
+    >
+      <span className="font-mono tabular-nums">
+        {n(used)} / {n(PROMPT_LIMITS.faqChars)}
+      </span>{" "}
+      characters.
+      {over
+        ? " The assistant reads answers in this order up to the limit; the ones after it are skipped."
+        : " The assistant reads answers up to this limit."}
+    </p>
   );
 }
 

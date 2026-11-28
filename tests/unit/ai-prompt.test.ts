@@ -1,11 +1,15 @@
 import { describe, expect, it } from "vitest";
 
+import { PROMPT_LIMITS } from "@/lib/ai-guardrails";
+
 import type { businessData } from "@/server/ai/prompt";
 import {
   type AiBusinessContext,
   NOT_SURE_REPLY,
   buildSystemPrompt,
+  faqsForPrompt,
   type ProposalStatus,
+  systemPromptParts,
 } from "@/server/ai/prompt";
 
 /*
@@ -106,8 +110,9 @@ function otherTenant(): AiBusinessContext {
 
 /** The JSON between the <business_data> tags, parsed. */
 function dataBlock(prompt: string) {
-  const match = /<business_data>\n([\s\S]*)\n<\/business_data>$/.exec(prompt);
-  expect(match, "one data block at the end").not.toBeNull();
+  // The data block closes the stable (cacheable) part; the clock and status follow it.
+  const match = /<business_data>\n([\s\S]*)\n<\/business_data>\n\nIt is now /.exec(prompt);
+  expect(match, "one data block, before the live part").not.toBeNull();
   return JSON.parse(match![1]!) as ReturnType<typeof businessData>;
 }
 
@@ -294,5 +299,50 @@ describe("buildSystemPrompt", () => {
     expect(dataBlock(buildSystemPrompt(anyTime, NOW)).cancellation_policy).toMatch(
       /any time before the appointment starts/,
     );
+  });
+});
+
+describe("prompt size and caching", () => {
+  it("keeps FAQs in order up to 8,000 characters; a longer one ends the list", () => {
+    const faq = (i: number, size: number) => ({ question: `Q${i}`, answer: "a".repeat(size) });
+    const ctx = { ...lumen(), faqs: [faq(1, 3_000), faq(2, 3_000), faq(3, 3_000), faq(4, 10)] };
+    expect(faqsForPrompt(ctx.faqs).map((f) => f.question)).toEqual(["Q1", "Q2"]);
+    const data = dataBlock(buildSystemPrompt(ctx, NOW));
+    expect(data.faqs.map((f) => f.question)).toEqual(["Q1", "Q2"]);
+    const total = data.faqs.reduce((n, f) => n + f.question.length + f.answer.length, 0);
+    expect(total).toBeLessThanOrEqual(PROMPT_LIMITS.faqChars);
+  });
+
+  it("cuts long service descriptions", () => {
+    const ctx = lumen();
+    ctx.services[0]!.description = "word ".repeat(200);
+    const [first] = dataBlock(buildSystemPrompt(ctx, NOW)).services;
+    expect(first!.description!.length).toBeLessThanOrEqual(PROMPT_LIMITS.serviceDescriptionChars);
+    expect(first!.description).toMatch(/…$/);
+  });
+
+  it("splits into a stable part (rules, data) and a live part (clock, status)", () => {
+    const later = new Date(NOW.getTime() + 3 * 3_600_000);
+    const a = systemPromptParts(lumen(), NOW);
+    const b = systemPromptParts(lumen(), later, {
+      proposals: [
+        {
+          kind: "book",
+          state: "open",
+          startsAt: later,
+          expiresAt: later,
+          serviceName: "Haircut",
+          staffName: "Aiko",
+          code: null,
+        },
+      ],
+    });
+    // The same business: byte-for-byte the same stable part, whatever the time or status.
+    expect(b.stable).toBe(a.stable);
+    expect(a.stable).toMatch(/# Rules/);
+    expect(a.stable).toMatch(/<\/business_data>$/);
+    expect(a.live).toMatch(/^It is now/);
+    expect(a.live).toMatch(/# Booking status in this chat/);
+    expect(buildSystemPrompt(lumen(), NOW)).toBe(`${a.stable}\n\n${a.live}`);
   });
 });
