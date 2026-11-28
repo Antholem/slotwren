@@ -1,6 +1,6 @@
 name: AI eval
 
-# The AI receptionist's 15 scripted conversations against a real model
+# The AI receptionist's 19 scripted conversations against a real model
 # (`pnpm ai:eval`, tests/ai/eval.test.ts). Manual only: it spends the
 # provider's quota, so it never runs on pushes or pull requests. Use it to
 # compare providers (Gemini vs Claude Haiku) before switching.

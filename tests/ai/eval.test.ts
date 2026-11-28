@@ -8,7 +8,7 @@ import { createWorld, type World } from "./harness";
 import { SCRIPTS } from "./scripts";
 
 /*
- * `pnpm ai:eval`: the 15 scripted conversations against the real model that
+ * `pnpm ai:eval`: the 19 scripted conversations against the real model that
  * AI_PROVIDER / AI_MODEL pick, with the same checks as CI's mock run. Never
  * part of `pnpm test` or CI (its own Vitest project; a manual GitHub workflow
  * runs it with a repo secret). Use it before switching providers.

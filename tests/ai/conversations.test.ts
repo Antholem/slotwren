@@ -7,7 +7,7 @@ import { createWorld, type World } from "./harness";
 import { SCRIPTS } from "./scripts";
 
 /*
- * The AI receptionist's 15 scripted conversations with the scripted mock
+ * The AI receptionist's 19 scripted conversations with the scripted mock
  * model (never a real provider or key), in CI. `pnpm ai:eval` runs the same
  * scripts against the real model (tests/ai/eval.test.ts).
  */
